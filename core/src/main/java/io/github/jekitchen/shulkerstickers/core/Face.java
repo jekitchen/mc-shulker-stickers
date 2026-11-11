@@ -19,6 +19,18 @@ public enum Face {
         };
     }
 
+    /** Unit vector pointing out of this face: {x, y, z}. */
+    public int[] normal() {
+        return switch (this) {
+            case DOWN -> new int[] {0, -1, 0};
+            case UP -> new int[] {0, 1, 0};
+            case NORTH -> new int[] {0, 0, -1};
+            case SOUTH -> new int[] {0, 0, 1};
+            case WEST -> new int[] {-1, 0, 0};
+            case EAST -> new int[] {1, 0, 0};
+        };
+    }
+
     /** Lowercase name, as stored in sticker data. */
     public String serializedName() {
         return name().toLowerCase(Locale.ROOT);
