@@ -4,6 +4,7 @@ import io.github.jekitchen.shulkerstickers.core.Permissions;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.permissions.PermissionLevel;
+import net.minecraft.server.permissions.PermissionSet;
 import net.minecraft.server.level.ServerPlayer;
 
 /**
@@ -18,19 +19,23 @@ public final class Perms {
     }
 
     public static boolean has(ServerPlayer player, String node) {
-        boolean admin = Permissions.ADMIN.equals(node);
         if (API) {
-            return Api.check(player, node, admin);
+            return Api.check(player, node, Permissions.ADMIN.equals(node));
         }
-        return !admin || player.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_GAMEMASTER);
+        return vanillaHas(player.permissions(), node);
     }
 
     public static boolean has(CommandSourceStack source, String node) {
-        boolean admin = Permissions.ADMIN.equals(node);
         if (API) {
-            return Api.check(source, node, admin);
+            return Api.check(source, node, Permissions.ADMIN.equals(node));
         }
-        return !admin || source.permissions().hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_GAMEMASTER);
+        return vanillaHas(source.permissions(), node);
+    }
+
+    /** The rule without a permissions mod: everyone has the player nodes; admin needs op level 2. */
+    public static boolean vanillaHas(PermissionSet permissions, String node) {
+        return !Permissions.ADMIN.equals(node)
+                || permissions.hasPermission(net.minecraft.server.permissions.Permissions.COMMANDS_GAMEMASTER);
     }
 
     /** Kept separate so the optional API's classes load only when it is installed. */

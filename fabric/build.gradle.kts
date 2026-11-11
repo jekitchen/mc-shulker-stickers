@@ -35,6 +35,14 @@ fabricApi {
     }
 }
 
+// The GameTest server loads both optional integrations, so their code paths actually run in tests.
+// Declared on the GameTest source set only (created by configureTests above): they never reach
+// the release jar or fabric.mod.json.
+dependencies {
+    "gametestImplementation"("me.lucko:fabric-permissions-api:0.7.0")
+    "gametestImplementation"("eu.pb4:common-protection-api:2.0.0")
+}
+
 tasks.processResources {
     val props = mapOf(
         "version" to project.version,

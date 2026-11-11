@@ -16,6 +16,7 @@
       "io.github.jekitchen.shulkerstickers.fabric.test.ReviewFixGameTests",
       "io.github.jekitchen.shulkerstickers.fabric.test.ParityGameTests",
       "io.github.jekitchen.shulkerstickers.fabric.test.ReopenLockGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.IntegrationGameTests",
       "io.github.jekitchen.shulkerstickers.fabric.test.PerfGameTests"
     ]
   },

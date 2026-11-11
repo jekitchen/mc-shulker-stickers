@@ -343,6 +343,12 @@ public final class EditorMenu extends ChestMenu {
         }
         Changes changes = session.changes();
         BoxState staged = session.staged();
+        // Permissions or config may have changed since a part was staged (e.g. a permissions
+        // mod revoked a node): every changed part must still be allowed.
+        if ((changes.color() && !colorAllowed()) || (changes.icon() && !iconAllowed()) || (changes.name() && !nameAllowed())) {
+            player.sendOverlayMessage(Text.tr(player, TextKeys.DENY_PERMISSION));
+            return;
+        }
         if (changes.name() && staged.name().isPresent()) {
             BlockedWords words = Settings.loaded().config() == state.config
                     ? Settings.loaded().blockedWords() : BlockedWords.compile(state.config.nameBlockedWords());

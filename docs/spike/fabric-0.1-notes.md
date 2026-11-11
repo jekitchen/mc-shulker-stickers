@@ -78,7 +78,7 @@ All of the spike's list (`docs/spike/m0-fabric.md`) still applies. New items:
 3. Displays disappear when the box opens and come back after the lid closes, with no flicker on a quick open/close.
 4. The first-placement tip appears once per player, survives a relog and death, and `/shulkerstickers toggle` really lets a block in the off-hand be placed against a box.
 5. A box placed by a dispenser shows its side icon on the side facing the dispenser.
-6. Fabric Permissions API (e.g. with LuckPerms) and a Common Protection API claim mod (e.g. Flan or GOML) on a real server. They're compileOnly and not installed in the GameTests, so those code paths have only been compiled, not run.
+6. Fabric Permissions API with a real permissions mod (e.g. LuckPerms) and a real claims mod using Common Protection API (e.g. Flan or GOML). Both APIs now run in the GameTests with test stand-ins (see below); what's left is checking real mods answer the same way.
 
 ## Move to core
 
@@ -140,3 +140,23 @@ Tests in `ParityGameTests` (each failed before its fix).
 ## Regression review fix (reopen lock)
 
 - The editor reopens a tick after the rename screen closes. If the same player had already reopened the same box in that tick (only a modified client can), the old reopen released the lock the new editor held. `EditorMenu.reopen()` now leaves a newer editor for the same box alone. `ReopenLockGameTests` covers that case, another menu opened in that tick (not stolen; lock released) and a disconnect (lock released; nothing reopened).
+
+## Optional integrations in GameTests
+
+Both optional APIs are loaded in the GameTest server only (`gametestImplementation` in `fabric/build.gradle.kts`); they stay `compileOnly` for the mod and are not in the release jar or its `depends` (checked by listing the built jar).
+
+| Library | Maven | Mod id |
+|---|---|---|
+| Fabric Permissions API | `me.lucko:fabric-permissions-api:0.7.0` | `fabric-permissions-api-v0` |
+| Common Protection API | `eu.pb4:common-protection-api:2.0.0` | `common-protection-api` |
+
+`IntegrationGameTests` registers a `PermissionCheckEvent` listener and a `ProtectionProvider` (`FakeIntegrations`) and checks:
+
+- Both mods are loaded.
+- A denied `shulker_stickers.icon` greys "Use off-hand item" and stages nothing.
+- **Bug found and fixed:** a node revoked after a part was staged was not re-checked at Save, so the icon was still saved. Save now refuses with `deny.permission` if any changed part (color, icon, name) is no longer allowed.
+- A denied `shulker_stickers.name.display` saves the name with `name_hidden = 1`.
+- `shulker_stickers.admin`: granted → `/shulkerstickers clear` allowed without op; denied → refused even for an op; unanswered → op level 2.
+- Unanswered player nodes default to allowed.
+- Without the permissions mod: `Perms.vanillaHas` (the fallback, now its own method) gives everyone the player nodes and needs op level 2 for admin.
+- A claimed position refuses the gesture with `deny.protected` and opens nothing; a box claimed after the editor opened refuses Save and stays unchanged.
