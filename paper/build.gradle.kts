@@ -84,3 +84,20 @@ if (providers.gradleProperty("selftest").isPresent) {
         }
     }
 }
+
+// `-Pperftest`: build a wall of 1,000 decorated boxes, log PERF timings, then shut down (AC-8).
+if (providers.gradleProperty("perftest").isPresent) {
+    tasks.withType<RunServer>().configureEach {
+        jvmArgs(
+            "-Dcom.mojang.eula.agree=true",
+            "-Dshulkerstickers.perftest=true",
+            "-Dshulkerstickers.selftest.stop=true",
+        )
+        if (providers.gradleProperty("plain").isPresent) {
+            jvmArgs("-Dshulkerstickers.perftest.plain=true")
+        }
+        if (providers.gradleProperty("nonames").isPresent) {
+            jvmArgs("-Dshulkerstickers.perftest.nonames=true")
+        }
+    }
+}

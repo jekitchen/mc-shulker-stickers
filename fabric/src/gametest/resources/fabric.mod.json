@@ -13,7 +13,8 @@
       "io.github.jekitchen.shulkerstickers.fabric.test.EditRulesGameTests",
       "io.github.jekitchen.shulkerstickers.fabric.test.DisplayGameTests",
       "io.github.jekitchen.shulkerstickers.fabric.test.SessionGameTests",
-      "io.github.jekitchen.shulkerstickers.fabric.test.ReviewFixGameTests"
+      "io.github.jekitchen.shulkerstickers.fabric.test.ReviewFixGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.PerfGameTests"
     ]
   },
   "depends": {

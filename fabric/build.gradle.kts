@@ -46,3 +46,10 @@ tasks.processResources {
         expand(props)
     }
 }
+
+// `-Pperftest`: also run the 1,000-box performance GameTest (AC-8). Off by default because it is slow.
+if (providers.gradleProperty("perftest").isPresent) {
+    tasks.matching { it.name == "runGameTest" }.configureEach {
+        (this as JavaExec).jvmArgs("-Dshulkerstickers.perftest=true")
+    }
+}

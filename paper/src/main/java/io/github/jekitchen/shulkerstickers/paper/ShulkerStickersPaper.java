@@ -29,6 +29,8 @@ public final class ShulkerStickersPaper extends JavaPlugin {
 
         if (Boolean.getBoolean("shulkerstickers.selftest")) {
             new SelfTest(this, settings, displays).schedule();
+        } else if (Boolean.getBoolean("shulkerstickers.perftest")) {
+            new PerfTest(this, displays).schedule();
         }
         getLogger().info("Shulker Stickers enabled");
     }

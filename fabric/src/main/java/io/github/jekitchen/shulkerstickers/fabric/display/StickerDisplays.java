@@ -129,7 +129,8 @@ public final class StickerDisplays {
         return box.getAnimationStatus() != ShulkerBoxBlockEntity.AnimationStatus.CLOSED;
     }
 
-    private static void updateOpenBoxes(ServerLevel level) {
+    /** Per-tick hook: hides displays of open boxes and shows them again on close. Public for the perf test. */
+    public static void updateOpenBoxes(ServerLevel level) {
         if (!Settings.config().hideWhileOpen()) {
             if (!HIDDEN.getOrDefault(level, Set.of()).isEmpty()) {
                 new ArrayList<>(HIDDEN.get(level)).forEach(pos -> refresh(level, pos));
