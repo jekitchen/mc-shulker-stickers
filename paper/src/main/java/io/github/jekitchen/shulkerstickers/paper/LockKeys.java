@@ -13,7 +13,7 @@ import org.bukkit.inventory.ItemStack;
  *
  * <p>Paper's API can tell a box is locked but can't test an item against the lock, which is an
  * item predicate since 1.21.2. Paper 26.x runs on Minecraft's own (unobfuscated) names, so this
- * asks the server's {@code BaseContainerBlockEntity#unlocksWith} by reflection. If that ever
+ * asks the server's {@code BaseContainerBlockEntity.lockKey.unlocksWith(item)} by reflection. If that ever
  * fails, locked boxes are refused, the safe choice, and a warning is logged once.
  */
 final class LockKeys {
@@ -41,9 +41,10 @@ final class LockKeys {
         try {
             Bridge b = bridge();
             Object blockEntity = b.getBlockEntity().invoke(state);
+            Object lockCode = blockEntity.getClass().getField("lockKey").get(blockEntity);
             Object nmsItem = b.asNmsCopy().invoke(null, item);
-            Method unlocks = blockEntity.getClass().getMethod("unlocksWith", b.nmsItemStack());
-            return (Boolean) unlocks.invoke(blockEntity, nmsItem);
+            Method unlocks = lockCode.getClass().getMethod("unlocksWith", b.nmsItemStack());
+            return (Boolean) unlocks.invoke(lockCode, nmsItem);
         } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
             if (!warned) {
                 warned = true;

@@ -345,12 +345,18 @@ final class SelfTest {
         key.editMeta(meta -> meta.customName(Component.text("key")));
         ItemStack wrong = new ItemStack(Material.STICK);
         wrong.editMeta(meta -> meta.customName(Component.text("not the key")));
-        var state = box.getState(false);
+        Block locked = box.getRelative(0, 0, 4);
+        locked.setType(Material.SHULKER_BOX, false);
+        ShulkerBox lockedState = (ShulkerBox) locked.getState();
+        lockedState.setLockItem(key);
+        lockedState.update(true, false);
+        var state = locked.getState(false);
         check("a locked box accepts its key (server lock check by reflection)",
                 LockKeys.unlocksWith(state, key, plugin.getLogger()));
         check("a locked box refuses the wrong key and an empty hand",
                 !LockKeys.unlocksWith(state, wrong, plugin.getLogger())
                         && !LockKeys.unlocksWith(state, new ItemStack(Material.AIR), plugin.getLogger()));
+        locked.setType(Material.AIR, false);
     }
 
     private void placeDecoratedBox(Block block, BlockFace facing, Sticker sticker) {
