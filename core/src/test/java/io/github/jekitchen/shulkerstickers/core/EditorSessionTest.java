@@ -62,6 +62,34 @@ class EditorSessionTest {
     }
 
     @Test
+    void sameItemWithDifferentVisualsIsAnIconChange() {
+        BoxState dyed = new BoxState(BoxColor.UNDYED, Optional.of("minecraft:leather_helmet"),
+                Optional.of("{\"minecraft:dyed_color\":255}"), Optional.empty());
+        EditorSession session = new EditorSession(dyed);
+
+        session.stageIcon("minecraft:leather_helmet", Optional.of("{\"minecraft:dyed_color\":16711680}"));
+
+        assertEquals(new Changes(false, true, false), session.changes());
+        assertEquals(Optional.of("{\"minecraft:dyed_color\":16711680}"), session.staged().iconVisual());
+    }
+
+    @Test
+    void removingTheIconAlsoClearsItsVisuals() {
+        BoxState dyed = new BoxState(BoxColor.UNDYED, Optional.of("minecraft:leather_helmet"),
+                Optional.of("{}"), Optional.empty());
+        EditorSession session = new EditorSession(dyed);
+
+        session.removeIcon();
+
+        assertEquals(Optional.empty(), session.staged().iconVisual());
+    }
+
+    @Test
+    void threeArgumentStateHasNoVisuals() {
+        assertEquals(Optional.empty(), ORIGINAL.iconVisual());
+    }
+
+    @Test
     void blankNameStagesNameRemoval() {
         EditorSession session = new EditorSession(ORIGINAL);
 

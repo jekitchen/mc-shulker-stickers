@@ -29,11 +29,15 @@ public final class EditorSession {
     }
 
     public void stageIcon(String iconId) {
-        staged = staged.withIcon(Optional.of(iconId));
+        stageIcon(iconId, Optional.empty());
+    }
+
+    public void stageIcon(String iconId, Optional<String> iconVisual) {
+        staged = staged.withIcon(Optional.of(iconId), iconVisual);
     }
 
     public void removeIcon() {
-        staged = staged.withIcon(Optional.empty());
+        staged = staged.withIcon(Optional.empty(), Optional.empty());
     }
 
     /** A blank name stages removing the name. */
@@ -45,7 +49,7 @@ public final class EditorSession {
     public Changes changes() {
         return new Changes(
                 staged.color() != original.color(),
-                !staged.iconId().equals(original.iconId()),
+                !staged.iconId().equals(original.iconId()) || !staged.iconVisual().equals(original.iconVisual()),
                 !staged.name().equals(original.name()));
     }
 
