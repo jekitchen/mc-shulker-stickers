@@ -27,10 +27,10 @@ import org.jspecify.annotations.Nullable;
 public final class StickerData {
 
     /**
-     * Fabric/Paper addition to PRD §6.1: set to 1 when the name was saved by a player without
-     * {@code shulker_stickers.name.display}, so the name is kept but not drawn on the box.
+     * Set to 1 when the name was saved by a player without {@code shulker_stickers.name.display},
+     * so the name is kept but not drawn on the box. Managed separately from the sticker itself.
      */
-    public static final String NAME_HIDDEN = "name_hidden";
+    public static final String NAME_HIDDEN = StickerFormat.NAME_HIDDEN;
 
     private StickerData() {
     }
@@ -57,7 +57,9 @@ public final class StickerData {
     public static void write(BlockEntity blockEntity, Optional<Sticker> sticker) {
         update(blockEntity, bukkit -> {
             for (String key : StickerFormat.KEYS) {
-                bukkit.remove(StickerFormat.fullKey(key));
+                if (!key.equals(NAME_HIDDEN)) {
+                    bukkit.remove(StickerFormat.fullKey(key));
+                }
             }
             sticker.ifPresent(s -> StickerCodec.encode(s).forEach((key, value) -> {
                 String full = StickerFormat.fullKey(key);
