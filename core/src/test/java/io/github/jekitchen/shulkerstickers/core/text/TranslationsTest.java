@@ -58,6 +58,13 @@ class TranslationsTest {
     }
 
     @Test
+    void placeholderTextInsideArgumentsIsLeftAlone() {
+        Translations t = new Translations(Map.of("en_us", Map.of("k", "{0} and {1}")));
+
+        assertEquals("box {1} and b", t.translate("en_us", "k", "box {1}", "b"));
+    }
+
+    @Test
     void everyTextKeyConstantHasEnglishText() throws IllegalAccessException {
         for (Field field : TextKeys.class.getFields()) {
             if (Modifier.isStatic(field.getModifiers()) && field.getType() == String.class) {

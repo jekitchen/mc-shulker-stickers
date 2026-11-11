@@ -12,6 +12,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Server-side translation (PRD §5.2): vanilla clients don't have our language files, so
@@ -64,12 +66,23 @@ public final class Translations {
         if (template == null) {
             return key;
         }
-        String result = template;
-        for (int i = 0; i < args.length; i++) {
-            result = result.replace("{" + i + "}", String.valueOf(args[i]));
-        }
-        return result;
+        return fill(template, args);
     }
+
+    /** Replaces {@code {n}} in one pass, so placeholder-like text inside an argument stays as typed. */
+    private static String fill(String template, Object[] args) {
+        Matcher m = PLACEHOLDER.matcher(template);
+        StringBuilder out = new StringBuilder();
+        while (m.find()) {
+            int index = Integer.parseInt(m.group(1));
+            String value = index < args.length ? String.valueOf(args[index]) : m.group();
+            m.appendReplacement(out, Matcher.quoteReplacement(value));
+        }
+        m.appendTail(out);
+        return out.toString();
+    }
+
+    private static final Pattern PLACEHOLDER = Pattern.compile("\\{(\\d{1,2})}");
 
     private String lookup(String locale, String key) {
         Map<String, String> language = languages.get(locale);
