@@ -137,9 +137,15 @@ final class SelfTest {
         helmet.editMeta(meta -> meta.lore(java.util.List.of(Component.text("secret"))));
         IconItems.Captured captured = IconItems.capture(helmet);
         plugin.getLogger().info("SELFTEST INFO dyed helmet icon_visual = " + captured.visual().orElse("<none>"));
-        check("red-dyed helmet keeps only the dyed color",
+        // Must match the Fabric GameTest byte for byte (same format on both platforms).
+        check("red-dyed helmet stores exactly the Fabric string",
                 captured.id().equals("minecraft:leather_helmet")
-                        && captured.visual().filter(v -> v.contains("minecraft:dyed_color") && !v.contains("lore")).isPresent());
+                        && captured.visual().equals(Optional.of("{\"minecraft:dyed_color\":16711680}")));
+
+        ItemStack sword = new ItemStack(Material.DIAMOND_SWORD);
+        sword.addEnchantment(org.bukkit.enchantments.Enchantment.SHARPNESS, 1);
+        check("enchanted sword stores only a glint override, like Fabric",
+                IconItems.capture(sword).visual().equals(Optional.of("{\"minecraft:enchantment_glint_override\":true}")));
 
         Sticker sticker = new Sticker(Optional.of(captured.id()), captured.visual(), Anchor.LID, 0, Optional.empty());
         Optional<ItemStack> drawn = IconItems.render(sticker, settings.config());

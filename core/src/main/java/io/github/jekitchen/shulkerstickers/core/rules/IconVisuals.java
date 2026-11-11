@@ -23,9 +23,23 @@ public final class IconVisuals {
 
     private IconVisuals() {}
 
+    private static final String GLINT_OVERRIDE = "minecraft:enchantment_glint_override";
+
     /** Filters and sorts a component map; empty if nothing visual is left. */
     public static Optional<String> canonicalize(JsonObject components) {
+        return canonicalize(components, false);
+    }
+
+    /**
+     * Like {@link #canonicalize(JsonObject)}, but an {@code enchanted} item keeps its shine:
+     * enchantments aren't stored, so a glint override of {@code true} is added unless the
+     * item already sets one.
+     */
+    public static Optional<String> canonicalize(JsonObject components, boolean enchanted) {
         JsonObject filtered = filter(components);
+        if (enchanted && !filtered.has(GLINT_OVERRIDE)) {
+            filtered.addProperty(GLINT_OVERRIDE, true);
+        }
         return filtered.isEmpty() ? Optional.empty() : Optional.of(GSON.toJson(sorted(filtered)));
     }
 

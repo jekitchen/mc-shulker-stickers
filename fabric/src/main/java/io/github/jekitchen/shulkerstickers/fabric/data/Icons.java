@@ -29,8 +29,6 @@ public final class Icons {
     public static final TagKey<Item> BLOCKLIST_TAG =
             TagKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath("shulker_stickers", "icon_blocklist"));
 
-    private static final String GLINT_OVERRIDE = "minecraft:enchantment_glint_override";
-
     private Icons() {
     }
 
@@ -47,10 +45,7 @@ public final class Icons {
         JsonElement encoded = DataComponentPatch.CODEC.encodeStart(ops, stack.getComponentsPatch())
                 .result().orElse(new JsonObject());
         JsonObject components = encoded.isJsonObject() ? encoded.getAsJsonObject() : new JsonObject();
-        if (stack.isEnchanted() && !components.has(GLINT_OVERRIDE)) {
-            components.addProperty(GLINT_OVERRIDE, true);
-        }
-        return IconVisuals.canonicalize(components);
+        return IconVisuals.canonicalize(components, stack.isEnchanted());
     }
 
     /** True if the item is on the config blocklist (IDs or {@code #tags}) or in the blocklist tag. */

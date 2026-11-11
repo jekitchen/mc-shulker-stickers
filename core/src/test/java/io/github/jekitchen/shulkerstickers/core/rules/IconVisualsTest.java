@@ -29,6 +29,24 @@ class IconVisualsTest {
     }
 
     @Test
+    void enchantedItemsGetAGlintOverride() {
+        // Enchantments themselves aren't stored; only the shine is kept.
+        assertEquals(Optional.of("{\"minecraft:enchantment_glint_override\":true}"),
+                IconVisuals.canonicalize(json("{\"minecraft:enchantments\":{\"minecraft:sharpness\":5}}"), true));
+    }
+
+    @Test
+    void anExplicitGlintOverrideWins() {
+        assertEquals(Optional.of("{\"minecraft:enchantment_glint_override\":false}"),
+                IconVisuals.canonicalize(json("{\"minecraft:enchantment_glint_override\":false}"), true));
+    }
+
+    @Test
+    void notEnchantedAddsNothing() {
+        assertEquals(Optional.empty(), IconVisuals.canonicalize(json("{}"), false));
+    }
+
+    @Test
     void unnamespacedKeysAreNamespaced() {
         assertEquals(Optional.of("{\"minecraft:dyed_color\":1}"), IconVisuals.canonicalize(json("{\"dyed_color\":1}")));
     }

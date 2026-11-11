@@ -37,7 +37,7 @@ final class IconItems {
             JsonObject components = json.has("components") && json.get("components").isJsonObject()
                     ? json.getAsJsonObject("components")
                     : new JsonObject();
-            return new Captured(id, IconVisuals.canonicalize(components));
+            return new Captured(id, IconVisuals.canonicalize(components, !stack.getEnchantments().isEmpty()));
         } catch (RuntimeException e) {
             return new Captured(id, Optional.empty());
         }
