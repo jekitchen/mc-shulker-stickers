@@ -1,6 +1,6 @@
 # Shulker Stickers — PRD
 
-Status: Draft v0.3 (all decisions from 11 Nov 2026 applied) · Owner: Jim Kitchen
+Status: Draft v0.4 (M0 spike results applied; items marked *proposed* await the owner) · Owner: Jim Kitchen
 
 ## 1. Summary
 
@@ -19,8 +19,8 @@ The server is authoritative in both builds. Vanilla clients see icons and names 
 |---|---|---|
 | ✅ Name and identifiers | **Shulker Stickers**; ID `shulker_stickers`; Modrinth/Hangar slug `shulker-stickers`; command `/shulkerstickers <param>` | One plural name everywhere players see it |
 | ✅ Platforms | **Fabric** (mod) + **Paper** (plugin), and the same Paper jar on **Canvas/Folia**; all three ship at 0.1 | Paper and Canvas servers are where vanilla-client support matters most |
-| ✅ Version policy | **26.3 and newer**; best effort to support each new release quickly | Fabric is stable on 26.3; Paper 26.3 is still in beta |
-| Toolchain | Java 25; Mojang's own names (the game is unobfuscated). Fabric: Loom 1.17, Loader 0.19.5, Fabric API 0.161.x+26.3. Paper: `paper-api` 26.3 | Required since 26.1 |
+| ✅ Version policy | **26.3 and newer**; best effort to support each new release quickly | Fabric and Paper are both stable on 26.3 (Paper build 248); Canvas 26.3 is stable; Folia 26.3 is alpha |
+| Toolchain | Java 25, Gradle 9.9.1; Mojang's own names (the game is unobfuscated). Fabric: Loom 1.19.4, Loader 0.20.1, Fabric API 0.166.0+26.3, Polymer 0.18.7+26.3. Paper: `paper-api` 26.3.build.248-stable | Checked in the M0 spike, 11 Nov 2026 |
 | ✅ Dependencies | Fabric: Fabric API + Polymer only. Paper/Canvas: no dependencies beyond the server API | Fewer things for admins to install and fewer things to wait on at version updates |
 | Rendering | Fabric: Polymer packet-only display entities. Paper/Canvas: real display entities marked as never saved | Vanilla clients see them; nothing is written to the world |
 | ✅ Gesture | Sneak + right-click with an **empty main hand** opens the editor. The icon comes from the **off-hand** item | Main-hand use is left alone |
@@ -187,27 +187,30 @@ All sticker data lives in `minecraft:custom_data → PublicBukkitValues`. That i
 |---|---|---|
 | `shulker_stickers:v` | int | Format version (starts at 1); we migrate it ourselves |
 | `shulker_stickers:icon_id` | string | Item ID, e.g. `minecraft:cobblestone` |
-| `shulker_stickers:icon_visual` | string | The visual properties from §5.3, as SNBT text |
+| `shulker_stickers:icon_visual` | string | The visual properties from §5.3 as compact JSON: component ID → the value Minecraft's component codec produces, only the allowed components, keys sorted. Omitted when there are none. *(Changed from SNBT in v0.4: Paper's API can't produce SNBT for components, but both platforms can run the same codecs with JSON.)* |
 | `shulker_stickers:anchor` | string | `lid`, `base` or `side` |
 | `shulker_stickers:rot` | int | Icon rotation on the top and bottom faces (0–3) |
+| `shulker_stickers:face` | string | *(New in v0.4.)* The exact face the icon is on for a placed box, lowercase (`north`). Needed because `side` alone doesn't say which side. Recomputed when the box is placed again |
+| `shulker_stickers:name_hidden` | int | *(New in v0.4, proposed.)* 1 if the name was saved by a player without `shulker_stickers.name.display`; the name is kept but not drawn |
 
 - **Color** is the block or item ID itself (17 vanilla variants). **Name** is vanilla `custom_name`.
 - **Why not a custom component:** registered component types are synced to clients, and a vanilla client that receives an unknown type disconnects.
 - **Why strings and a version:** Minecraft's automatic data upgrade doesn't reach inside `custom_data`. We store the item ID and SNBT text, and migrate them ourselves using the version number. If an icon can't be read, the raw data is kept and nothing is drawn, so a later fix can still recover it.
-- **Placed boxes:** Paper keeps block-entity persistent data in the block entity's own `PublicBukkitValues`. Fabric keeps the `custom_data` component in the block entity. *Verify both, and whether a placed box keeps its stickers when a world moves between platforms.* Items are portable either way.
+- **Placed boxes:** Paper keeps block-entity persistent data in the block entity's own `PublicBukkitValues`. Fabric keeps the `custom_data` component in the block entity (confirmed: `BlockEntity#applyComponents` keeps it and saves it under `components`). Items are portable either way. Whether a *placed* box keeps its stickers when a world moves between platforms is still open.
+- **Name without an icon** *(proposed)*: when Save writes a name, it also writes `anchor` and `face` for the face that was clicked. A name with no anchor is drawn on the lid.
 - **Anchor on re-placement:** `lid` is the face the box points to, `base` the opposite face and `side` one of the four in between. A `side` icon goes on the side facing the player who placed the box. For a dispenser, it goes on the side facing back toward the dispenser, or north if no side does.
 
 ### 6.2 Persistence matrix (must pass on both platforms)
 
 | Path | Expected | Mechanism / risk |
 |---|---|---|
-| Break → pick up → place | Preserved | **Risk:** the vanilla loot table copies only listed components. Fabric: modify the loot table. Paper: confirm block-entity persistent data travels to the dropped item *(verify)* |
+| Break → pick up → place | Preserved | **Confirmed in M0:** the vanilla loot table copies only `custom_name`, `container`, `lock` and `container_loot`, so `custom_data` is lost. Fabric: `LootTableEvents.MODIFY_DROPS` copies it. Paper: a built-in datapack (registered at bootstrap) overrides the 17 shulker loot tables with a `copy_custom_data` step. **Risk:** another datapack overriding the same loot tables replaces ours |
 | Piston pushes box / explosion | Box drops as item, data preserved | Same drop path |
 | Hopper, dropper, ender chest, chests | Preserved | The stack moves with its components |
-| Dispenser places box | Preserved; displays attached | Anchor rule from §6.1 |
+| Dispenser places box | Preserved; displays attached | Anchor rule from §6.1. Paper: `BlockPlaceEvent` doesn't fire for dispensers, so this needs its own handler |
 | Creative pick-block (with data) | Preserved | Vanilla behavior |
-| Anvil rename, dye recipe, cauldron wash | Preserved | Vanilla keeps the other components *(verify)* |
-| Bundles, nesting in another shulker | N/A | Vanilla does not allow it *(verify)* |
+| Anvil rename, dye recipe, cauldron wash | Preserved | Confirmed: the anvil starts from `input.copy()`, the dye recipe is a transmute recipe, the cauldron uses `transmuteCopy` |
+| Bundles, nesting in another shulker | N/A | Confirmed: `canFitInsideContainerItems()` is false for shulker boxes |
 | `/clone`, structure blocks, WorldEdit (Paper) | Preserved | Displays re-attached on chunk load |
 | Item moved between Fabric and Paper servers | Preserved | Identical format (§6.1) |
 | Minecraft version upgrade (26.3 → 26.4) | Preserved | Our own versioned format; tested with a world upgrade |
@@ -259,14 +262,14 @@ Only `core` holds the gameplay rules, so the two builds behave the same.
 
 | Item | Value |
 |---|---|
-| Minecraft | 26.3 stable; 26.4 in snapshots |
+| Minecraft | 26.3 stable; 26.4 in snapshots (26.4-snapshot-8 on 10 Nov 2026) |
 | Java | 25 (minimum since 26.1) |
-| Fabric | Loom 1.17 (`net.fabricmc.fabric-loom`), Gradle 9.6, Loader 0.19.5, Fabric API 0.161.x+26.3 |
-| Paper | `paper-api` 26.3; Paper's 26.3 builds are still in beta |
-| Canvas | A Folia fork; plugins need `folia-supported: true`. The latest release seen in our research is for 26.2. *Verify 26.3 availability* |
-| Repo | [jekitchen/mc-shulker-stickers](https://github.com/jekitchen/mc-shulker-stickers) (MIT `LICENSE` committed; no code yet) |
+| Fabric | Loom 1.19.4 (`net.fabricmc.fabric-loom`), Gradle 9.9.1 (run-paper needs 9.7+), Loader 0.20.1, Fabric API 0.166.0+26.3, Polymer `polymer-virtual-entity` 0.18.7+26.3 |
+| Paper | `paper-api` 26.3.build.248-stable (26.3 is stable). Folia 26.3 build 6 is alpha |
+| Canvas | A Folia fork; plugins need `folia-supported: true`. **26.3 build 1010 is stable** and loads the plugin (M0) |
+| Repo | [jekitchen/mc-shulker-stickers](https://github.com/jekitchen/mc-shulker-stickers) (MIT; three-module Gradle build; CI on GitHub Actions) |
 | IDs | Mod/plugin ID `shulker_stickers`; plugin name `ShulkerStickers`; Java package `io.github.jekitchen.shulkerstickers` (confirmed) |
-| Tests | Fabric GameTest; Paper: integration tests against a real test server *(MockBukkit support for 26.3 to verify)*; manual vanilla-client checks |
+| Tests | `core`: JUnit. Fabric: GameTest (`runGameTest`). Paper: MockBukkit `mockbukkit-v26.3` 4.120.0 for logic, plus a real-server self-test on Paper, Folia and Canvas for loot, observers, displays and threading. Manual vanilla-client checks |
 
 **Client vs. server:** both builds run only on the server. The Fabric build also works in singleplayer, where the game runs its own built-in server. A client install is needed only for the optional v1.0 companion.
 
@@ -280,12 +283,12 @@ Config file: `config/shulker_stickers.json` (Fabric) or `plugins/ShulkerStickers
 |---|---|---|
 | `color.enabled` / `icon.enabled` / `name.edit_enabled` / `name.display_enabled` | `true` | Turn each feature on or off |
 | `color.cost`, `icon.cost`, `name.cost` | `{type:"none"}` | Or `xp_levels` / `item` with an amount; charged on Save only for what changed |
-| `icon.blocklist` | `[]` plus the tag `#shulker_stickers:icon_blocklist` | The tag works on Fabric; Paper uses the list only *(verify datapack tags on Paper)* |
+| `icon.blocklist` | `[]` plus the tag `#shulker_stickers:icon_blocklist` | The tag works on both platforms (Paper: shipped in the plugin's built-in datapack) |
 | `icon.max_data_bytes` | 2048 | Icons larger than this aren't drawn |
 | `icon.view_range` / `name.view_range` | 32 / 16 blocks | |
 | `icon.full_bright` | `false` | Draw icons fully lit |
 | `name.max_display_chars` | 24 | Characters shown on the box |
-| `name.blocked_words` | `[]` | Plain words or regular expressions |
+| `name.blocked_words` | `[]` | Plain words match whole words, ignoring case; entries wrapped in slashes (`/b[a4]d/`) are regular expressions *(proposed)* |
 | `display.hide_while_open` | `true` | |
 | `help.first_place_message` | `true` | |
 | `allow_adventure_mode` | `false` | |
@@ -384,7 +387,18 @@ Adding Paper and Canvas roughly **doubles the work up to 0.1**: shared `core` co
 | Gesture collision with Paint your Shulkers! | Confused players | Competitor tests; document it; `toggle` |
 | Too many display entities in a big storage wall | Client frame rate drops | Short view ranges; AC-8 |
 
-### Verify against 26.3 source before relying on these (ground rule)
+### Verify list (answered in the M0 spike, 11 Nov 2026)
+
+All items below were checked against 26.3 source, tests or real-server runs; details are in `docs/spike/m0-fabric.md` and `docs/spike/m0-paper.md`. Short answers:
+
+- **Fabric:** the event is `UseBlockCallback`; a server-side `AnvilMenu` with `ContainerLevelAccess.NULL` receives the rename text through `setItemName`; block entities keep `custom_data`; the shulker loot table drops it (fixed with `MODIFY_DROPS`); Polymer has a 26.3 build.
+- **Paper:** the off-hand placement is stopped by also denying the OFF_HAND interact event; `MenuType.ANVIL` + `AnvilView#getRenameText()` exist; block persistent data does **not** reach the dropped item without our datapack; non-persistent entities are removed cleanly; datapack item tags are visible to plugins; MockBukkit supports 26.3 with gaps.
+- **Canvas/Folia:** Canvas 26.3 is stable; region and entity schedulers work as documented; display entities spawn from region threads.
+- **Vanilla:** anvil, dye recipe and cauldron keep `custom_data`; boxes can't go in bundles; the server can tell a box is open (the lid status lags a tick, so open menus are checked too); the rename limit is 50.
+
+Still needs a vanilla client: the rename screen at zero XP cost, icon orientation on all six faces, and ghost items after rejected clicks.
+
+### Original verify list
 
 - **Fabric:** the use-block event's name and signature after the 26.1 renames; that a server-side anvil menu receives the rename text; that a block entity keeps `custom_data`; the shulker loot table's copy function; that Polymer's virtual-entity module has a 26.3 build.
 - **Paper:** that `PlayerInteractEvent` lets us stop the off-hand placement; Paper's anvil view API for reading the rename text; that block-entity persistent data travels to the dropped item when a box is broken; that entities marked never-to-save are handled correctly on chunk unload; whether datapack item tags are available to plugins; MockBukkit support for 26.3.
@@ -405,6 +419,15 @@ Adding Paper and Canvas roughly **doubles the work up to 0.1**: shared `core` co
 - **Competitors:** noted in §2; testing with them installed (AC-14).
 - **Platforms:** Fabric + Paper + Canvas.
 - **Naming:** Shulker Stickers / `shulker_stickers`; all commands are `/shulkerstickers <param>`.
+
+### Proposed in v0.4 (awaiting the owner)
+
+- **`face` key** for the exact icon face on a placed box (§6.1).
+- **`icon_visual` as JSON** instead of SNBT (§6.1).
+- **`name_hidden` key** for names saved without `name.display` permission (§6.1).
+- **Name without an icon** gets the clicked face (§6.1).
+- **Blocked-word syntax:** `/regex/` vs whole words (§8).
+- **Paper drop path via a built-in datapack** that overrides the shulker loot tables (§6.2), with the conflict risk noted.
 
 ### Closed 11 Nov 2026 (no open questions)
 
