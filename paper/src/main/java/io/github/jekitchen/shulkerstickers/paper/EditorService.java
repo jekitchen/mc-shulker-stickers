@@ -59,6 +59,8 @@ final class EditorService implements Listener {
         /** Set while we close the menu on purpose (Save, or switching screens). */
         boolean closingOnPurpose;
         AnvilView renameView;
+        /** The editor menu currently shown to the player, if any. */
+        Inventory editorInventory;
 
         Session(UUID player, BlockKey box, BlockFace clickedFace, int rotation, EditorSession editor) {
             this.player = player;
@@ -113,6 +115,7 @@ final class EditorService implements Listener {
         Inventory inventory = plugin.getServer().createInventory(holder, EditorLayout.SIZE,
                 Component.text("Edit: " + title));
         holder.inventory(inventory);
+        session.editorInventory = inventory;
         render(inventory, session, player);
         session.renaming = false;
         player.openInventory(inventory);
@@ -159,7 +162,8 @@ final class EditorService implements Listener {
             }
             return;
         }
-        if (!(event.getView().getTopInventory().getHolder(false) instanceof EditorHolder holder)) {
+        Session session = editorSession(event.getWhoClicked().getUniqueId(), event.getView());
+        if (session == null) {
             return;
         }
         // Anti-duplication: the editor never lets an item move, whatever the click (AC-12).
@@ -168,17 +172,26 @@ final class EditorService implements Listener {
             return;
         }
         Player player = (Player) event.getWhoClicked();
-        Session session = holder.session();
         EditorLayout.buttonAt(event.getRawSlot()).ifPresent(button -> press(player, session, button));
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
     void onDrag(InventoryDragEvent event) {
-        if (event.getView().getTopInventory().getHolder(false) instanceof EditorHolder
+        if (editorSession(event.getWhoClicked().getUniqueId(), event.getView()) != null
                 || (event.getView() instanceof AnvilView anvil
                         && isRenameView(event.getWhoClicked().getUniqueId(), anvil))) {
             event.setCancelled(true);
         }
+    }
+
+    /**
+     * The session whose editor menu is the top of {@code view}. Looked up by player rather
+     * than through {@code getHolder}: cheaper on every click, and it works in MockBukkit.
+     */
+    private Session editorSession(UUID player, org.bukkit.inventory.InventoryView view) {
+        Session session = sessions.get(player);
+        return session != null && session.editorInventory != null
+                && session.editorInventory.equals(view.getTopInventory()) ? session : null;
     }
 
     private void press(Player player, Session session, EditorLayout.Button button) {
@@ -286,8 +299,7 @@ final class EditorService implements Listener {
             }, null);
             return;
         }
-        if (event.getView().getTopInventory().getHolder(false) instanceof EditorHolder holder
-                && holder.session() == session) {
+        if (editorSession(player.getUniqueId(), event.getView()) == session) {
             // Esc or Cancel: discard (PRD §5.2).
             end(session);
             if (session.editor.isDirty()) {
