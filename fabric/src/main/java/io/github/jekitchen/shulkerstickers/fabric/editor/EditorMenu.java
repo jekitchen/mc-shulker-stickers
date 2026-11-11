@@ -278,6 +278,11 @@ public final class EditorMenu extends ChestMenu {
      * editing session ends here.
      */
     private void reopen() {
+        if (player.containerMenu instanceof EditorMenu newer && newer != this
+                && newer.level == level && newer.pos.equals(pos)) {
+            // The player already reopened this box's editor; that one owns the lock now.
+            return;
+        }
         boolean free = player.containerMenu == player.inventoryMenu || player.containerMenu instanceof RenameMenu;
         if (player.hasDisconnected() || !free) {
             EditorLocks.release(level, pos, player);

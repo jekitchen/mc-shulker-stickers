@@ -136,3 +136,7 @@ Tests in `ParityGameTests` (each failed before its fix).
   - Bottom face: the image's top points in the same world direction as on the top face.
   - The old top-face math pointed the image's top toward the player and disagreed with the bottom face; a test now checks the front and top vectors for all 6 faces × 4 rotations.
   - **Assumption to check with a client:** an item display's model front faces +Z (the image reads correctly when viewed from +Z). If it's the other way round, every face is mirrored and the fix is one 180° turn about Y in `faceRotation`.
+
+## Regression review fix (reopen lock)
+
+- The editor reopens a tick after the rename screen closes. If the same player had already reopened the same box in that tick (only a modified client can), the old reopen released the lock the new editor held. `EditorMenu.reopen()` now leaves a newer editor for the same box alone. `ReopenLockGameTests` covers that case, another menu opened in that tick (not stolen; lock released) and a disconnect (lock released; nothing reopened).
