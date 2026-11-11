@@ -102,5 +102,8 @@ final class StickerTransferListener implements Listener {
                     new Sticker(s.iconId(), s.iconVisual(), s.anchor(), s.rot(), Optional.of(side)));
         }
         box.update(true, false);
+        // The item's copy in custom_data would go stale after the first edit; persistent data is
+        // the only copy on Paper (owner decision 4).
+        WorldMigration.migrate(block, java.util.logging.Logger.getLogger("ShulkerStickers"));
     }
 }

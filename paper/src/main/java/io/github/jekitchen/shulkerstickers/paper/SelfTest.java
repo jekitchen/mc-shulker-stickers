@@ -87,6 +87,7 @@ final class SelfTest {
         Block box = origin.getBlock();
         placeDecoratedBox(box, BlockFace.EAST, ICON);
         lockKeyTests(box);
+        migrationTests(box);
         boolean ok = true;
         String why = "";
         for (BoxColor color : BoxColor.values()) {
@@ -357,6 +358,37 @@ final class SelfTest {
                 !LockKeys.unlocksWith(state, wrong, plugin.getLogger())
                         && !LockKeys.unlocksWith(state, new ItemStack(Material.AIR), plugin.getLogger()));
         locked.setType(Material.AIR, false);
+    }
+
+    /** Owner decision 4: a box saved by Fabric (sticker in custom_data only) is adopted on Paper. */
+    private void migrationTests(Block box) {
+        if (DisplayManager.FOLIA) {
+            plugin.getLogger().info("SELFTEST INFO migration checks skipped on Folia (console /data runs off-region)");
+            return;
+        }
+        Block fabricBox = box.getRelative(0, 0, 6);
+        fabricBox.setType(Material.AIR, false);
+        fabricBox.setType(Material.SHULKER_BOX, false);
+        String fabricData = "{components:{\"minecraft:custom_data\":{PublicBukkitValues:{"
+                + "\"shulker_stickers:v\":1,\"shulker_stickers:icon_id\":\"minecraft:diamond\","
+                + "\"shulker_stickers:anchor\":\"lid\",\"shulker_stickers:rot\":0}}}}";
+        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "data merge block " + fabricBox.getX() + " "
+                + fabricBox.getY() + " " + fabricBox.getZ() + " " + fabricData);
+        boolean adopted = WorldMigration.migrate(fabricBox, plugin.getLogger());
+        Optional<Sticker> read = StickerStore.read(((ShulkerBox) fabricBox.getState()).getPersistentDataContainer());
+        check("a Fabric-saved box's sticker moves into persistent data",
+                adopted && read.flatMap(Sticker::iconId).equals(Optional.of("minecraft:diamond")));
+        check("our keys are removed from custom_data afterwards (a second pass finds nothing)",
+                !WorldMigration.migrate(fabricBox, plugin.getLogger()));
+
+        // A Paper box placed from a stickered item: persistent data wins over the stale item copy.
+        placeDecoratedBox(fabricBox, BlockFace.UP, ICON);
+        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "data merge block " + fabricBox.getX() + " "
+                + fabricBox.getY() + " " + fabricBox.getZ() + " " + fabricData);
+        boolean replaced = WorldMigration.migrate(fabricBox, plugin.getLogger());
+        Optional<Sticker> kept = StickerStore.read(((ShulkerBox) fabricBox.getState()).getPersistentDataContainer());
+        check("persistent data is kept over a stale custom_data copy", !replaced && kept.equals(Optional.of(ICON)));
+        fabricBox.setType(Material.AIR, false);
     }
 
     private void placeDecoratedBox(Block block, BlockFace facing, Sticker sticker) {

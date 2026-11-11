@@ -65,6 +65,8 @@ final class DisplayListener implements Listener {
             }
             for (var state : chunk.getTileEntities(b -> Tag.SHULKER_BOXES.isTagged(b.getType()), false)) {
                 if (state instanceof ShulkerBox) {
+                    // A box saved by Fabric: move its sticker into persistent data first (owner decision 4).
+                    WorldMigration.migrate(state.getBlock(), plugin.getLogger());
                     displays.refresh(state.getBlock());
                 }
             }
