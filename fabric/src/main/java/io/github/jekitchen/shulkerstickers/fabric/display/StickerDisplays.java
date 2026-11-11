@@ -25,6 +25,7 @@ import java.util.WeakHashMap;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerBlockEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.BlockPos;
+import io.github.jekitchen.shulkerstickers.core.display.DisplayLayout;
 import net.minecraft.core.Direction;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.chat.Component;
@@ -47,9 +48,6 @@ import org.joml.Vector3f;
 public final class StickerDisplays {
 
     /** Just outside the face, so the display takes light from the open space in front of it. */
-    private static final double FACE_OFFSET = 0.51;
-    private static final float ICON_SCALE = 0.5f;
-    private static final float NAME_SCALE = 0.3f;
     /** Vanilla display view_range is a multiplier of 64 blocks. */
     private static final float VIEW_RANGE_UNIT = 64f;
 
@@ -190,7 +188,8 @@ public final class StickerDisplays {
             ItemDisplayElement element = new ItemDisplayElement(stack);
             element.setItemDisplayContext(ItemDisplayContext.FIXED);
             element.setLeftRotation(rotation);
-            element.setScale(new Vector3f(ICON_SCALE));
+            element.setScale(new Vector3f(DisplayLayout.ICON_SCALE));
+            element.setTranslation(new Vector3f(0, DisplayLayout.iconOffset(name.isPresent()), 0).rotate(rotation));
             element.setViewRange(config.iconViewRange() / VIEW_RANGE_UNIT);
             if (config.iconFullBright()) {
                 element.setBrightness(Brightness.FULL_BRIGHT);
@@ -202,10 +201,9 @@ public final class StickerDisplays {
             TextDisplayElement label = new TextDisplayElement(Component.literal(NameRules.displayText(text, config.nameMaxDisplayChars())));
             label.setBillboardMode(Display.BillboardConstraints.FIXED);
             label.setLeftRotation(rotation);
-            label.setScale(new Vector3f(NAME_SCALE));
+            label.setScale(new Vector3f(DisplayLayout.NAME_SCALE));
             // Under the icon, measured in the face's own "down" direction; centered with no icon.
-            float down = icon.isPresent() ? -0.42f : -0.05f;
-            label.setTranslation(new Vector3f(0, down, 0).rotate(rotation));
+            label.setTranslation(new Vector3f(0, DisplayLayout.nameOffset(icon.isPresent()), 0).rotate(rotation));
             label.setShadow(true);
             label.setBackground(0);
             label.setViewRange(config.nameViewRange() / VIEW_RANGE_UNIT);
@@ -214,7 +212,7 @@ public final class StickerDisplays {
 
         // The display sits just outside the face (for light) but belongs to the box's own chunk,
         // so a box on a chunk edge never loads or depends on the neighbouring chunk.
-        Vec3 at = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(FACE_OFFSET));
+        Vec3 at = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(DisplayLayout.FACE_OFFSET));
         new ChunkAttachment(holder, level.getChunkAt(pos), at, false);
         HOLDERS.computeIfAbsent(level, l -> new HashMap<>()).put(pos, holder);
     }

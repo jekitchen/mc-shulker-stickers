@@ -7,7 +7,9 @@ import com.mojang.brigadier.context.CommandContext;
 import io.github.jekitchen.shulkerstickers.core.Permissions;
 import io.github.jekitchen.shulkerstickers.core.data.Sticker;
 import io.github.jekitchen.shulkerstickers.core.data.StickerCodec;
+import io.github.jekitchen.shulkerstickers.core.text.InspectReport;
 import io.github.jekitchen.shulkerstickers.core.text.TextKeys;
+import net.minecraft.ChatFormatting;
 import io.github.jekitchen.shulkerstickers.fabric.data.StickerData;
 import io.github.jekitchen.shulkerstickers.fabric.display.StickerDisplays;
 import io.github.jekitchen.shulkerstickers.fabric.editor.BoxEdits;
@@ -81,19 +83,16 @@ public final class StickerCommands {
     public static List<Component> inspectLines(CommandSourceStack source, ShulkerBoxBlockEntity box) {
         Map<String, Object> raw = StickerData.rawValues(box);
         BlockPos pos = box.getBlockPos();
+        Optional<String> name = Optional.ofNullable(box.getCustomName()).map(Component::getString);
         java.util.ArrayList<Component> lines = new java.util.ArrayList<>();
-        lines.add(Text.tr(source, TextKeys.INSPECT_HEADER, pos.getX() + " " + pos.getY() + " " + pos.getZ()));
-        if (raw.isEmpty()) {
-            lines.add(Text.tr(source, TextKeys.INSPECT_NONE));
-        } else {
-            raw.forEach((k, v) -> lines.add(Text.tr(source, TextKeys.INSPECT_LINE, k, v)));
-            if (StickerCodec.decode(raw).isEmpty()) {
-                lines.add(Text.tr(source, TextKeys.INSPECT_UNREADABLE));
-            }
-        }
-        if (box.getCustomName() != null) {
-            lines.add(Text.tr(source, TextKeys.INSPECT_LINE, "name", box.getCustomName().getString()
-                    + (StickerData.isNameHidden(box) ? " (hidden)" : "")));
+        for (InspectReport.Line line : InspectReport.lines(pos.getX() + " " + pos.getY() + " " + pos.getZ(),
+                raw, name, StickerData.isNameHidden(box))) {
+            ChatFormatting color = switch (line.tone()) {
+                case HEADER -> ChatFormatting.AQUA;
+                case NORMAL -> ChatFormatting.GRAY;
+                case WARNING -> ChatFormatting.YELLOW;
+            };
+            lines.add(Text.tr(source, line.key(), line.args().toArray()).copy().withStyle(color));
         }
         return lines;
     }

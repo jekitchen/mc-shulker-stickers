@@ -3,6 +3,7 @@ package io.github.jekitchen.shulkerstickers.paper;
 import com.mojang.brigadier.Command;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import io.github.jekitchen.shulkerstickers.core.Permissions;
+import io.github.jekitchen.shulkerstickers.core.text.InspectReport;
 import io.github.jekitchen.shulkerstickers.core.text.TextKeys;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
@@ -105,21 +106,18 @@ final class StickerCommands {
             }
             var pdc = box.getPersistentDataContainer();
             Map<String, Object> raw = StickerStore.raw(pdc);
-            boolean readable = StickerStore.read(pdc).isPresent();
-            boolean hidden = StickerStore.isNameHidden(pdc);
+            java.util.Optional<String> name = java.util.Optional.ofNullable(box.customName())
+                    .map(n -> net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(n));
             String where = block.getX() + " " + block.getY() + " " + block.getZ();
+            var lines = InspectReport.lines(where, raw, name, StickerStore.isNameHidden(pdc));
             player.getScheduler().run(plugin, t -> {
-                player.sendMessage(Texts.text(player, NamedTextColor.AQUA, TextKeys.INSPECT_HEADER, where));
-                if (raw.isEmpty() && !hidden) {
-                    player.sendMessage(Texts.text(player, NamedTextColor.GRAY, TextKeys.INSPECT_NONE));
-                    return;
-                }
-                if (!raw.isEmpty() && !readable) {
-                    player.sendMessage(Texts.text(player, NamedTextColor.YELLOW, TextKeys.INSPECT_UNREADABLE));
-                }
-                raw.forEach((k, v) -> player.sendMessage(Texts.text(player, NamedTextColor.GRAY, TextKeys.INSPECT_LINE, k, v)));
-                if (hidden) {
-                    player.sendMessage(Texts.text(player, NamedTextColor.GRAY, TextKeys.INSPECT_LINE, "name_hidden", 1));
+                for (InspectReport.Line line : lines) {
+                    NamedTextColor color = switch (line.tone()) {
+                        case HEADER -> NamedTextColor.AQUA;
+                        case NORMAL -> NamedTextColor.GRAY;
+                        case WARNING -> NamedTextColor.YELLOW;
+                    };
+                    player.sendMessage(Texts.text(player, color, line.key(), line.args().toArray()));
                 }
             }, null);
         });

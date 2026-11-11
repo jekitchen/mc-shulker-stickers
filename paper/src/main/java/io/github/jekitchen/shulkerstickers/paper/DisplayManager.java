@@ -2,6 +2,7 @@ package io.github.jekitchen.shulkerstickers.paper;
 
 import io.github.jekitchen.shulkerstickers.core.Anchor;
 import io.github.jekitchen.shulkerstickers.core.config.StickerConfig;
+import io.github.jekitchen.shulkerstickers.core.display.DisplayLayout;
 import io.github.jekitchen.shulkerstickers.core.data.Sticker;
 import io.github.jekitchen.shulkerstickers.core.rules.NameRules;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
@@ -59,8 +60,6 @@ class DisplayManager {
             .map(p -> p.getLocation().toVector())
             .toList();
 
-    private static final float ICON_SCALE = 0.45f;
-    private static final float TEXT_SCALE = 0.3f;
     private static final long CHECK_TICKS = 20;
 
     /** What a box has to show, if a player is close enough. */
@@ -178,30 +177,29 @@ class DisplayManager {
         Anchor anchor = sticker.map(Sticker::anchor).orElse(Anchor.LID);
         BlockFace face = Faces.iconFace(anchor, facing, sticker.flatMap(Sticker::face));
         Quaternionf rotation = IconOrientation.rotation(Faces.toCore(face), sticker.map(Sticker::rot).orElse(0));
-        Location at = block.getLocation().add(0.5, 0.5, 0.5).add(face.getDirection().multiply(0.51));
+        Location at = block.getLocation().add(0.5, 0.5, 0.5).add(face.getDirection().multiply(DisplayLayout.FACE_OFFSET));
 
         List<Entity> spawned = new ArrayList<>(2);
         if (drawIcon) {
-            // The icon sits a little higher when the box also has a name, so both fit.
-            float up = name.isPresent() ? 0.08f : 0f;
+            float up = DisplayLayout.iconOffset(name.isPresent());
             spawned.add(block.getWorld().spawn(at, ItemDisplay.class, display -> {
                 prepare(display, config);
                 display.setItemStack(icon.get());
                 display.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
                 display.setViewRange(viewRange(config.iconViewRange()));
-                display.setTransformation(transform(rotation, up, ICON_SCALE));
+                display.setTransformation(transform(rotation, up, DisplayLayout.ICON_SCALE));
             }));
         }
         if (drawName) {
             String text = NameRules.displayText(name.get(), config.nameMaxDisplayChars());
-            float up = icon.isPresent() ? -0.3f : -0.05f;
+            float up = DisplayLayout.nameOffset(icon.isPresent());
             spawned.add(block.getWorld().spawn(at, TextDisplay.class, display -> {
                 prepare(display, config);
                 display.text(Component.text(text));
                 display.setShadowed(true);
                 display.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
                 display.setViewRange(viewRange(config.nameViewRange()));
-                display.setTransformation(transform(rotation, up, TEXT_SCALE));
+                display.setTransformation(transform(rotation, up, DisplayLayout.NAME_SCALE));
             }));
         }
         displays.put(key, new Drawn(spawned, drawIcon, drawName, false));

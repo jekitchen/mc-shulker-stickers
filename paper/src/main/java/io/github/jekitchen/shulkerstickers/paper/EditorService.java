@@ -10,6 +10,7 @@ import io.github.jekitchen.shulkerstickers.core.config.Cost;
 import io.github.jekitchen.shulkerstickers.core.config.StickerConfig;
 import io.github.jekitchen.shulkerstickers.core.data.Sticker;
 import io.github.jekitchen.shulkerstickers.core.editor.EditorLayout;
+import io.github.jekitchen.shulkerstickers.core.editor.EditorLook;
 import io.github.jekitchen.shulkerstickers.core.rules.Costs;
 import io.github.jekitchen.shulkerstickers.core.rules.NameRules;
 import io.github.jekitchen.shulkerstickers.core.text.TextKeys;
@@ -192,6 +193,11 @@ final class EditorService implements Listener {
         StickerConfig config = settings.config();
         BoxState staged = session.editor.staged();
         boolean colorOn = colorAllowed(player);
+        ItemStack filler = new ItemStack(item(EditorLook.FILLER));
+        filler.editMeta(meta -> meta.itemName(Component.text(EditorLook.FILLER_NAME)));
+        for (int slot = 0; slot < EditorLayout.SIZE; slot++) {
+            inventory.setItem(slot, filler.clone());
+        }
         for (BoxColor color : BoxColor.values()) {
             ItemStack item = new ItemStack(material(color));
             item.editMeta(meta -> {
@@ -208,19 +214,18 @@ final class EditorService implements Listener {
         preview.editMeta(meta -> {
             meta.itemName(staged.name().map(n -> (Component) Component.text(n))
                     .orElse(Texts.label(player, TextKeys.EDITOR_TITLE_UNNAMED)));
-            meta.lore(List.of(Texts.lore(player, TextKeys.EDITOR_PREVIEW),
-                    staged.iconId().map(id -> Texts.lore(player, TextKeys.EDITOR_PREVIEW_ICON, id))
-                            .orElse(Texts.lore(player, TextKeys.EDITOR_PREVIEW_NO_ICON))));
+            meta.lore(List.of(staged.iconId().map(id -> Texts.lore(player, TextKeys.EDITOR_PREVIEW_ICON, id))
+                    .orElse(Texts.lore(player, TextKeys.EDITOR_PREVIEW_NO_ICON))));
         });
         inventory.setItem(EditorLayout.PREVIEW, preview);
 
         inventory.setItem(EditorLayout.USE_OFFHAND, offhandButton(player, config));
         inventory.setItem(EditorLayout.REMOVE_ICON,
-                button(player, Material.BARRIER, TextKeys.EDITOR_REMOVE_ICON, iconAllowed(player)));
-        inventory.setItem(EditorLayout.RENAME, button(player, Material.NAME_TAG, TextKeys.EDITOR_RENAME, nameAllowed(player)));
-        inventory.setItem(EditorLayout.CANCEL, button(player, Material.RED_CONCRETE, TextKeys.EDITOR_CANCEL, true));
+                button(player, item(EditorLook.REMOVE_ICON), TextKeys.EDITOR_REMOVE_ICON, iconAllowed(player)));
+        inventory.setItem(EditorLayout.RENAME, button(player, item(EditorLook.RENAME), TextKeys.EDITOR_RENAME, nameAllowed(player)));
+        inventory.setItem(EditorLayout.CANCEL, button(player, item(EditorLook.CANCEL), TextKeys.EDITOR_CANCEL, true));
 
-        ItemStack save = button(player, Material.LIME_CONCRETE, TextKeys.EDITOR_SAVE, true);
+        ItemStack save = button(player, item(EditorLook.SAVE), TextKeys.EDITOR_SAVE, true);
         List<Cost> costs = Payments.costsFor(player, Costs.forChanges(session.editor.changes(), config));
         if (!costs.isEmpty()) {
             save.editMeta(meta -> meta.lore(List.of(
@@ -230,18 +235,20 @@ final class EditorService implements Listener {
     }
 
     private ItemStack offhandButton(Player player, StickerConfig config) {
+        Material placeholder = item(EditorLook.OFFHAND_PLACEHOLDER);
         if (!iconAllowed(player)) {
-            return button(player, Material.GRAY_STAINED_GLASS_PANE, TextKeys.EDITOR_USE_OFFHAND, false);
+            return button(player, placeholder, TextKeys.EDITOR_USE_OFFHAND, false);
         }
         ItemStack offhand = player.getInventory().getItemInOffHand();
         if (offhand.isEmpty()) {
-            return button(player, Material.GRAY_STAINED_GLASS_PANE, TextKeys.EDITOR_USE_OFFHAND_EMPTY, true);
+            return button(player, placeholder, TextKeys.EDITOR_USE_OFFHAND_EMPTY, true);
         }
         IconItems.Captured captured = IconItems.capture(offhand);
-        boolean ok = IconItems.allowed(captured.id(), captured.visual(), config);
+        if (!IconItems.allowed(captured.id(), captured.visual(), config)) {
+            return button(player, placeholder, TextKeys.EDITOR_USE_OFFHAND_BLOCKED, true);
+        }
         ItemStack shown = offhand.asOne();
-        shown.editMeta(meta -> meta.itemName(Texts.label(player,
-                ok ? TextKeys.EDITOR_USE_OFFHAND : TextKeys.EDITOR_USE_OFFHAND_BLOCKED)));
+        shown.editMeta(meta -> meta.itemName(Texts.label(player, TextKeys.EDITOR_USE_OFFHAND)));
         return shown;
     }
 
@@ -882,8 +889,9 @@ final class EditorService implements Listener {
         return Optional.ofNullable(locks.get(BlockKey.of(block)));
     }
 
+    /** An unavailable button keeps its own item and gets the "disabled" lore line (owner decision 11). */
     private static ItemStack button(Player player, Material material, String key, boolean enabled) {
-        ItemStack item = new ItemStack(enabled ? material : Material.GRAY_STAINED_GLASS_PANE);
+        ItemStack item = new ItemStack(material);
         item.editMeta(meta -> {
             meta.itemName(Texts.label(player, key));
             if (!enabled) {
@@ -893,6 +901,10 @@ final class EditorService implements Listener {
             }
         });
         return item;
+    }
+
+    private static Material item(String id) {
+        return Objects.requireNonNull(Material.matchMaterial(id), id);
     }
 
     private static Material material(BoxColor color) {

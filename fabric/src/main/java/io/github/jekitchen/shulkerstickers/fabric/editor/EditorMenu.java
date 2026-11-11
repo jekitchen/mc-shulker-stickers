@@ -9,6 +9,7 @@ import io.github.jekitchen.shulkerstickers.core.config.Cost;
 import io.github.jekitchen.shulkerstickers.core.config.StickerConfig;
 import io.github.jekitchen.shulkerstickers.core.data.Sticker;
 import io.github.jekitchen.shulkerstickers.core.editor.EditorLayout;
+import io.github.jekitchen.shulkerstickers.core.editor.EditorLook;
 import io.github.jekitchen.shulkerstickers.core.editor.EditorLayout.Button;
 import io.github.jekitchen.shulkerstickers.core.rules.BlockedWords;
 import io.github.jekitchen.shulkerstickers.core.rules.Costs;
@@ -413,7 +414,7 @@ public final class EditorMenu extends ChestMenu {
 
     private void refreshButtons() {
         BoxState staged = state.session.staged();
-        ItemStack filler = button(Items.STAINED_GLASS_PANE.pick(DyeColor.GRAY), " ");
+        ItemStack filler = button(item(EditorLook.FILLER), EditorLook.FILLER_NAME);
         for (int i = 0; i < EditorLayout.SIZE; i++) {
             buttons.setItem(i, filler.copy());
         }
@@ -439,24 +440,24 @@ public final class EditorMenu extends ChestMenu {
         ItemStack offHand = player.getOffhandItem();
         ItemStack use;
         if (!iconAllowed()) {
-            use = disabledLore(button(Items.DYE.pick(DyeColor.LIGHT_GRAY), Text.string(player, TextKeys.EDITOR_USE_OFFHAND)));
+            use = disabledLore(button(item(EditorLook.OFFHAND_PLACEHOLDER), Text.string(player, TextKeys.EDITOR_USE_OFFHAND)));
         } else if (offHand.isEmpty()) {
-            use = button(Items.DYE.pick(DyeColor.LIGHT_GRAY), Text.string(player, TextKeys.EDITOR_USE_OFFHAND_EMPTY));
+            use = button(item(EditorLook.OFFHAND_PLACEHOLDER), Text.string(player, TextKeys.EDITOR_USE_OFFHAND_EMPTY));
         } else if (Icons.isBlocked(offHand, state.config)) {
-            use = button(Items.DYE.pick(DyeColor.LIGHT_GRAY), Text.string(player, TextKeys.EDITOR_USE_OFFHAND_BLOCKED));
+            use = button(item(EditorLook.OFFHAND_PLACEHOLDER), Text.string(player, TextKeys.EDITOR_USE_OFFHAND_BLOCKED));
         } else {
             use = offHand.copyWithCount(1);
             use.set(DataComponents.CUSTOM_NAME, Text.plain(Text.string(player, TextKeys.EDITOR_USE_OFFHAND)));
         }
         buttons.setItem(EditorLayout.USE_OFFHAND, use);
 
-        ItemStack remove = button(Items.BARRIER, Text.string(player, TextKeys.EDITOR_REMOVE_ICON));
+        ItemStack remove = button(item(EditorLook.REMOVE_ICON), Text.string(player, TextKeys.EDITOR_REMOVE_ICON));
         buttons.setItem(EditorLayout.REMOVE_ICON, iconAllowed() ? remove : disabledLore(remove));
-        ItemStack rename = button(Items.NAME_TAG, Text.string(player, TextKeys.EDITOR_RENAME));
+        ItemStack rename = button(item(EditorLook.RENAME), Text.string(player, TextKeys.EDITOR_RENAME));
         buttons.setItem(EditorLayout.RENAME, nameAllowed() ? rename : disabledLore(rename));
-        buttons.setItem(EditorLayout.CANCEL, button(Items.CONCRETE.pick(DyeColor.RED), Text.string(player, TextKeys.EDITOR_CANCEL)));
+        buttons.setItem(EditorLayout.CANCEL, button(item(EditorLook.CANCEL), Text.string(player, TextKeys.EDITOR_CANCEL)));
 
-        ItemStack save = button(Items.CONCRETE.pick(DyeColor.LIME), Text.string(player, TextKeys.EDITOR_SAVE));
+        ItemStack save = button(item(EditorLook.SAVE), Text.string(player, TextKeys.EDITOR_SAVE));
         List<Cost> costs = player.isCreative() ? List.of() : Costs.forChanges(state.session.changes(), state.config);
         if (!costs.isEmpty()) {
             save.set(DataComponents.LORE, new ItemLore(List.of(
@@ -471,6 +472,10 @@ public final class EditorMenu extends ChestMenu {
         lore.add(Text.grey(Text.string(player, TextKeys.EDITOR_FEATURE_DISABLED)));
         stack.set(DataComponents.LORE, new ItemLore(lore));
         return stack;
+    }
+
+    private static Item item(String id) {
+        return net.minecraft.core.registries.BuiltInRegistries.ITEM.getValue(net.minecraft.resources.Identifier.parse(id));
     }
 
     private static ItemStack button(Item item, String name) {
