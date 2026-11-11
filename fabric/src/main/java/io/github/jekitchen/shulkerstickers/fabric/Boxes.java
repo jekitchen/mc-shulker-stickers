@@ -9,6 +9,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.inventory.ShulkerBoxMenu;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
@@ -57,5 +58,20 @@ public final class Boxes {
             case WEST -> Face.WEST;
             case EAST -> Face.EAST;
         };
+    }
+
+    public static Direction direction(Face face) {
+        return switch (face) {
+            case DOWN -> Direction.DOWN;
+            case UP -> Direction.UP;
+            case NORTH -> Direction.NORTH;
+            case SOUTH -> Direction.SOUTH;
+            case WEST -> Direction.WEST;
+            case EAST -> Direction.EAST;
+        };
+    }
+
+    public static Item item(BoxColor color) {
+        return BuiltInRegistries.ITEM.getValue(Identifier.parse(color.itemId()));
     }
 }

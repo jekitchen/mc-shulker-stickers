@@ -1,22 +1,35 @@
 package io.github.jekitchen.shulkerstickers.fabric.editor;
 
-import io.github.jekitchen.shulkerstickers.core.Anchor;
 import io.github.jekitchen.shulkerstickers.core.BoxColor;
 import io.github.jekitchen.shulkerstickers.core.BoxState;
 import io.github.jekitchen.shulkerstickers.core.Changes;
 import io.github.jekitchen.shulkerstickers.core.EditorSession;
+import io.github.jekitchen.shulkerstickers.core.Permissions;
+import io.github.jekitchen.shulkerstickers.core.config.Cost;
+import io.github.jekitchen.shulkerstickers.core.config.StickerConfig;
+import io.github.jekitchen.shulkerstickers.core.data.Sticker;
+import io.github.jekitchen.shulkerstickers.core.editor.EditorLayout;
+import io.github.jekitchen.shulkerstickers.core.editor.EditorLayout.Button;
+import io.github.jekitchen.shulkerstickers.core.rules.BlockedWords;
+import io.github.jekitchen.shulkerstickers.core.rules.Costs;
+import io.github.jekitchen.shulkerstickers.core.rules.IconRules;
+import io.github.jekitchen.shulkerstickers.core.rules.NameRules;
+import io.github.jekitchen.shulkerstickers.core.text.TextKeys;
+import io.github.jekitchen.shulkerstickers.fabric.Access;
 import io.github.jekitchen.shulkerstickers.fabric.Boxes;
+import io.github.jekitchen.shulkerstickers.fabric.Perms;
 import io.github.jekitchen.shulkerstickers.fabric.Recolor;
-import io.github.jekitchen.shulkerstickers.fabric.data.Sticker;
+import io.github.jekitchen.shulkerstickers.fabric.Settings;
+import io.github.jekitchen.shulkerstickers.fabric.Text;
+import io.github.jekitchen.shulkerstickers.fabric.data.Icons;
 import io.github.jekitchen.shulkerstickers.fabric.data.StickerData;
 import io.github.jekitchen.shulkerstickers.fabric.display.StickerDisplays;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.component.DataComponents;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -27,9 +40,9 @@ import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.MenuType;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ItemLore;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
@@ -37,67 +50,86 @@ import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
 
 /**
  * The Sticker editor (PRD §5.2): a server-side 3-row chest menu whose slots are all
- * display-only buttons. Changes are staged in an {@link EditorSession} and applied on Save.
+ * display-only buttons. Changes are staged and applied together on Save.
  */
 public final class EditorMenu extends ChestMenu {
 
-    public static final int PREVIEW_SLOT = 18;
-    public static final int USE_OFF_HAND_SLOT = 19;
-    public static final int REMOVE_ICON_SLOT = 20;
-    public static final int RENAME_SLOT = 21;
-    public static final int CANCEL_SLOT = 25;
-    public static final int SAVE_SLOT = 26;
-    private static final int MENU_SIZE = 27;
+    /** What survives switching to the rename screen and back. */
+    static final class EditState {
+        final EditorSession session;
+        final Direction clickedFace;
+        final StickerConfig config;
+        final Optional<Sticker> originalSticker;
+        Optional<Placement> placement;
+
+        EditState(EditorSession session, Direction clickedFace, StickerConfig config, Optional<Sticker> originalSticker) {
+            this.session = session;
+            this.clickedFace = clickedFace;
+            this.config = config;
+            this.originalSticker = originalSticker;
+            this.placement = originalSticker.map(Placement::of);
+        }
+    }
 
     private final ServerPlayer player;
     private final ServerLevel level;
     private final BlockPos pos;
-    private final Direction clickedFace;
-    private final EditorSession session;
+    private final EditState state;
     private final SimpleContainer buttons;
-    private final Optional<Sticker> originalSticker;
-    private Anchor stagedAnchor;
-    private int stagedRot;
     private boolean finished;
     private boolean switchingToRename;
 
-    private EditorMenu(int containerId, ServerPlayer player, ServerLevel level, BlockPos pos, Direction clickedFace,
-            EditorSession session, Optional<Sticker> originalSticker, SimpleContainer buttons) {
-        super(MenuType.GENERIC_9x3, containerId, player.getInventory(), buttons, 3);
+    private EditorMenu(int containerId, ServerPlayer player, ServerLevel level, BlockPos pos, EditState state) {
+        super(MenuType.GENERIC_9x3, containerId, player.getInventory(), new SimpleContainer(EditorLayout.SIZE), 3);
         this.player = player;
         this.level = level;
-        this.pos = pos;
-        this.clickedFace = clickedFace;
-        this.session = session;
-        this.buttons = buttons;
-        this.originalSticker = originalSticker;
-        this.stagedAnchor = originalSticker.map(Sticker::anchor).orElse(Anchor.LID);
-        this.stagedRot = originalSticker.map(Sticker::rot).orElse(0);
+        this.pos = pos.immutable();
+        this.state = state;
+        this.buttons = (SimpleContainer) getContainer();
         refreshButtons();
     }
 
-    /** Builds an editor for the box at {@code pos}, opened by clicking {@code clickedFace}. */
-    public static EditorMenu forBox(int containerId, ServerPlayer player, ServerLevel level, BlockPos pos, Direction clickedFace) {
-        return forSession(containerId, player, level, pos, clickedFace, new EditorSession(readState(level, pos)));
+    /** Builds an editor for the box at {@code pos} without opening it (tests use this). */
+    public static EditorMenu forBox(int containerId, ServerPlayer player, ServerLevel level, BlockPos pos,
+            Direction clickedFace, StickerConfig config) {
+        return new EditorMenu(containerId, player, level, pos, newState(level, pos, clickedFace, config));
     }
 
-    private static EditorMenu forSession(int containerId, ServerPlayer player, ServerLevel level, BlockPos pos,
-            Direction clickedFace, EditorSession session) {
+    public static EditorMenu forBox(int containerId, ServerPlayer player, ServerLevel level, BlockPos pos, Direction clickedFace) {
+        return forBox(containerId, player, level, pos, clickedFace, Settings.config());
+    }
+
+    private static EditState newState(ServerLevel level, BlockPos pos, Direction clickedFace, StickerConfig config) {
         Optional<Sticker> sticker = level.getBlockEntity(pos) instanceof ShulkerBoxBlockEntity box
                 ? StickerData.read(box) : Optional.empty();
-        return new EditorMenu(containerId, player, level, pos, clickedFace, session, sticker, new SimpleContainer(MENU_SIZE));
+        return new EditState(new EditorSession(readState(level, pos)), clickedFace, config, sticker);
     }
 
-    /** Opens the editor on the player's screen. */
-    public static void open(ServerPlayer player, ServerLevel level, BlockPos pos, Direction clickedFace) {
-        open(player, level, pos, clickedFace, new EditorSession(readState(level, pos)));
+    /**
+     * Opens the editor if the player may edit this box and nobody else is editing it; otherwise
+     * shows the reason in the action bar. Returns true if the editor opened.
+     */
+    public static boolean tryOpen(ServerPlayer player, ServerLevel level, BlockPos pos, Direction clickedFace) {
+        StickerConfig config = Settings.config();
+        Optional<String> deny = Access.denyReason(player, level, pos, config);
+        if (deny.isPresent()) {
+            player.sendOverlayMessage(Text.tr(player, deny.get()));
+            return false;
+        }
+        Optional<String> other = EditorLocks.tryAcquire(level, pos, player);
+        if (other.isPresent()) {
+            player.sendOverlayMessage(Text.tr(player, TextKeys.DENY_IN_USE_EDITOR, other.get()));
+            return false;
+        }
+        open(player, level, pos, newState(level, pos, clickedFace, config));
+        return true;
     }
 
-    static void open(ServerPlayer player, ServerLevel level, BlockPos pos, Direction clickedFace, EditorSession session) {
-        String title = session.staged().name().orElse("Shulker Box");
+    private static void open(ServerPlayer player, ServerLevel level, BlockPos pos, EditState state) {
+        String name = state.session.staged().name().orElse(Text.string(player, TextKeys.EDITOR_TITLE_UNNAMED));
         player.openMenu(new SimpleMenuProvider(
-                (id, inventory, p) -> forSession(id, player, level, pos, clickedFace, session),
-                Component.literal("Edit: " + title)));
+                (id, inventory, p) -> new EditorMenu(id, player, level, pos, state),
+                Text.tr(player, TextKeys.EDITOR_TITLE, name)));
     }
 
     static BoxState readState(ServerLevel level, BlockPos pos) {
@@ -106,19 +138,16 @@ public final class EditorMenu extends ChestMenu {
             return new BoxState(color, Optional.empty(), Optional.empty());
         }
         Optional<String> name = Optional.ofNullable(box.getCustomName()).map(Component::getString);
-        return new BoxState(color, StickerData.read(box).map(Sticker::iconId), name);
-    }
-
-    public static int colorSlot(BoxColor color) {
-        return color.ordinal();
+        Optional<Sticker> sticker = StickerData.read(box);
+        return new BoxState(color, sticker.flatMap(Sticker::iconId), sticker.flatMap(Sticker::iconVisual), name);
     }
 
     public EditorSession session() {
-        return session;
+        return state.session;
     }
 
     public boolean isButton(int slot) {
-        return slot >= 0 && slot < MENU_SIZE;
+        return EditorLayout.isMenuSlot(slot);
     }
 
     // ---- Click handling: only plain clicks on our own slots do anything (PRD §5.2, AC-12) ----
@@ -126,8 +155,8 @@ public final class EditorMenu extends ChestMenu {
     @Override
     public void clicked(int slotIndex, int buttonNum, ContainerInput input, Player clicker) {
         try {
-            if (input == ContainerInput.PICKUP && (buttonNum == 0 || buttonNum == 1) && isButton(slotIndex)) {
-                onButton(slotIndex);
+            if (input == ContainerInput.PICKUP && (buttonNum == 0 || buttonNum == 1)) {
+                EditorLayout.buttonAt(slotIndex).ifPresent(this::onButton);
             }
         } finally {
             // Undo anything the client predicted locally.
@@ -154,73 +183,179 @@ public final class EditorMenu extends ChestMenu {
 
     @Override
     public boolean stillValid(Player clicker) {
-        return level.getBlockState(pos).getBlock() instanceof ShulkerBoxBlock
+        return clicker.level() == level
+                && level.getBlockState(pos).getBlock() instanceof ShulkerBoxBlock
                 && clicker.isWithinBlockInteractionRange(pos, 1.0);
     }
 
     @Override
     public void removed(Player clicker) {
         super.removed(clicker);
-        if (!finished && !switchingToRename && session.isDirty()) {
-            player.sendOverlayMessage(Component.literal("Changes discarded"));
+        if (switchingToRename) {
+            return;
+        }
+        EditorLocks.release(level, pos, player);
+        if (!finished && state.session.isDirty()) {
+            player.sendOverlayMessage(Text.tr(player, TextKeys.EDITOR_DISCARDED));
         }
     }
 
-    private void onButton(int slot) {
-        if (slot < BoxColor.values().length) {
-            session.stageColor(BoxColor.values()[slot]);
-        } else if (slot == USE_OFF_HAND_SLOT) {
-            useOffHand();
-        } else if (slot == REMOVE_ICON_SLOT) {
-            session.removeIcon();
-        } else if (slot == RENAME_SLOT) {
-            switchingToRename = true;
-            RenameMenu.open(player, session.staged().name().orElse(""), name -> {
-                session.stageName(name);
-                open(player, level, pos, clickedFace, session);
-            }, () -> open(player, level, pos, clickedFace, session));
-            return;
-        } else if (slot == CANCEL_SLOT) {
-            finish();
-            return;
-        } else if (slot == SAVE_SLOT) {
-            save();
-            return;
+    private boolean colorAllowed() {
+        return state.config.colorEnabled() && Perms.has(player, Permissions.COLOR);
+    }
+
+    private boolean iconAllowed() {
+        return state.config.iconEnabled() && Perms.has(player, Permissions.ICON);
+    }
+
+    private boolean nameAllowed() {
+        return state.config.nameEditEnabled() && Perms.has(player, Permissions.NAME);
+    }
+
+    private void onButton(Button button) {
+        switch (button) {
+            case Button.Color c -> {
+                if (colorAllowed()) {
+                    state.session.stageColor(c.color());
+                }
+            }
+            case Button.Action a -> {
+                switch (a) {
+                    case PREVIEW -> { }
+                    case USE_OFFHAND -> useOffHand();
+                    case REMOVE_ICON -> {
+                        if (iconAllowed()) {
+                            state.session.removeIcon();
+                        }
+                    }
+                    case RENAME -> {
+                        if (nameAllowed()) {
+                            openRename();
+                            return;
+                        }
+                    }
+                    case CANCEL -> {
+                        finish();
+                        return;
+                    }
+                    case SAVE -> {
+                        save();
+                        return;
+                    }
+                }
+            }
         }
         refreshButtons();
     }
 
-    private void useOffHand() {
-        ItemStack offHand = player.getOffhandItem();
-        if (offHand.isEmpty()) {
-            return;
-        }
-        session.stageIcon(BuiltInRegistries.ITEM.getKey(offHand.getItem()).toString());
-        Direction facing = level.getBlockState(pos).getValue(ShulkerBoxBlock.FACING);
-        stagedAnchor = Anchor.of(Boxes.face(facing), Boxes.face(clickedFace));
-        stagedRot = stagedAnchor == Anchor.SIDE
-                ? DisplayFaces.sideIndex(facing, clickedFace)
-                : player.getDirection().get2DDataValue();
+    private void openRename() {
+        switchingToRename = true;
+        RenameMenu.open(player, state.session.staged().name().orElse(""), name -> {
+            state.session.stageName(NameRules.clamp(name));
+            reopen();
+        }, this::reopen);
     }
 
+    private void reopen() {
+        if (player.hasDisconnected()) {
+            EditorLocks.release(level, pos, player);
+            return;
+        }
+        open(player, level, pos, state);
+    }
+
+    private void useOffHand() {
+        ItemStack offHand = player.getOffhandItem();
+        if (!iconAllowed() || offHand.isEmpty()) {
+            return;
+        }
+        if (Icons.isBlocked(offHand, state.config)) {
+            player.sendOverlayMessage(Text.tr(player, TextKeys.SAVE_ICON_BLOCKED));
+            return;
+        }
+        String id = Icons.idOf(offHand);
+        Optional<String> visual = Icons.visualOf(offHand, level.registryAccess());
+        if (!IconRules.fitsSize(new Sticker(Optional.of(id), visual, io.github.jekitchen.shulkerstickers.core.Anchor.LID, 0, Optional.empty()),
+                state.config.iconMaxDataBytes())) {
+            player.sendOverlayMessage(Text.tr(player, TextKeys.SAVE_ICON_TOO_LARGE));
+            return;
+        }
+        state.session.stageIcon(id, visual);
+        state.placement = Optional.of(clickedPlacement());
+    }
+
+    private Placement clickedPlacement() {
+        Direction facing = level.getBlockState(pos).getValue(ShulkerBoxBlock.FACING);
+        return Placement.clicked(facing, state.clickedFace, player.getDirection());
+    }
+
+    /** The sticker to store for the staged state: an icon, or just a face for the name, or nothing. */
+    private Optional<Sticker> stagedSticker() {
+        BoxState staged = state.session.staged();
+        if (staged.iconId().isEmpty() && staged.name().isEmpty()) {
+            return Optional.empty();
+        }
+        Placement placement = state.placement.orElseGet(this::clickedPlacement);
+        return Optional.of(placement.sticker(staged.iconId(), staged.iconVisual()));
+    }
+
+    /** PRD §6.3. Failures leave the editor open with the reason in the action bar. */
     private void save() {
+        EditorSession session = state.session;
         if (!(level.getBlockEntity(pos) instanceof ShulkerBoxBlockEntity box)
                 || Boxes.color(level.getBlockState(pos).getBlock()).orElse(null) != session.original().color()) {
-            player.sendOverlayMessage(Component.literal("The box changed while you were editing it"));
+            player.sendOverlayMessage(Text.tr(player, TextKeys.SAVE_BOX_GONE));
             finish();
+            return;
+        }
+        Optional<String> deny = Access.denyReason(player, level, pos, state.config);
+        if (deny.isPresent()) {
+            player.sendOverlayMessage(Text.tr(player, deny.get()));
             return;
         }
         Changes changes = session.changes();
         BoxState staged = session.staged();
-        if (changes.icon() || stagedAnchor != originalSticker.map(Sticker::anchor).orElse(stagedAnchor)) {
-            StickerData.write(box, staged.iconId().map(id -> new Sticker(id, "", stagedAnchor, stagedRot)));
+        if (changes.name() && staged.name().isPresent()) {
+            BlockedWords words = Settings.loaded().config() == state.config
+                    ? Settings.loaded().blockedWords() : BlockedWords.compile(state.config.nameBlockedWords());
+            if (words.firstMatch(staged.name().get()).isPresent()) {
+                player.sendOverlayMessage(Text.tr(player, TextKeys.SAVE_BLOCKED_WORD));
+                return;
+            }
+        }
+        Optional<Sticker> sticker = stagedSticker();
+        if (changes.icon() && sticker.isPresent() && sticker.get().hasIcon()) {
+            if (!IconRules.fitsSize(sticker.get(), state.config.iconMaxDataBytes())) {
+                player.sendOverlayMessage(Text.tr(player, TextKeys.SAVE_ICON_TOO_LARGE));
+                return;
+            }
+            if (Icons.displayStack(sticker.get(), state.config, level.registryAccess()).isEmpty()) {
+                player.sendOverlayMessage(Text.tr(player, TextKeys.SAVE_ICON_BLOCKED));
+                return;
+            }
+        }
+        List<Cost> costs = Costs.forChanges(changes, state.config);
+        if (!Payments.canPay(player, costs)) {
+            player.sendOverlayMessage(Text.tr(player, TextKeys.SAVE_CANNOT_PAY, Payments.describe(player, costs)));
+            return;
+        }
+
+        if (!sticker.equals(state.originalSticker)) {
+            StickerData.write(box, sticker);
         }
         if (changes.name()) {
             BoxEdits.setName(box, staged.name().map(Component::literal).orElse(null));
+            StickerData.setNameHidden(box, staged.name().isPresent() && !Perms.has(player, Permissions.NAME_DISPLAY));
         }
-        if (changes.color() && Recolor.swap(level, pos, staged.color()) == Recolor.Result.IN_USE) {
-            player.sendOverlayMessage(Component.literal("Box is in use: color not changed"));
+        boolean colorApplied = !changes.color();
+        if (changes.color()) {
+            colorApplied = Recolor.swap(level, pos, staged.color()) != Recolor.Result.IN_USE;
+            if (!colorApplied) {
+                player.sendOverlayMessage(Text.tr(player, TextKeys.SAVE_BOX_IN_USE));
+            }
         }
+        Payments.charge(player, Costs.forChanges(
+                new Changes(changes.color() && colorApplied, changes.icon(), changes.name()), state.config));
         StickerDisplays.refresh(level, pos);
         finish();
     }
@@ -229,60 +364,78 @@ public final class EditorMenu extends ChestMenu {
         finished = true;
         if (player.containerMenu == this) {
             player.closeContainer();
+        } else {
+            EditorLocks.release(level, pos, player);
         }
     }
 
     // ---- Button items ----
 
     private void refreshButtons() {
-        BoxState staged = session.staged();
-        for (int i = 0; i < MENU_SIZE; i++) {
-            buttons.setItem(i, button(Items.STAINED_GLASS_PANE.pick(DyeColor.GRAY), " "));
+        BoxState staged = state.session.staged();
+        ItemStack filler = button(Items.STAINED_GLASS_PANE.pick(DyeColor.GRAY), " ");
+        for (int i = 0; i < EditorLayout.SIZE; i++) {
+            buttons.setItem(i, filler.copy());
         }
+        boolean colorAllowed = colorAllowed();
         for (BoxColor color : BoxColor.values()) {
-            ItemStack stack = button(BuiltInRegistries.ITEM.getValue(net.minecraft.resources.Identifier.parse(color.itemId())),
-                    label(color));
+            ItemStack stack = button(Boxes.item(color), Text.string(player, TextKeys.color(color)));
             if (color == staged.color()) {
                 stack.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
             }
-            buttons.setItem(colorSlot(color), stack);
+            if (!colorAllowed) {
+                disabledLore(stack);
+            }
+            buttons.setItem(EditorLayout.slotOf(new Button.Color(color)), stack);
         }
 
-        ItemStack preview = button(BuiltInRegistries.ITEM.getValue(net.minecraft.resources.Identifier.parse(staged.color().itemId())),
-                staged.name().orElse("Shulker Box"));
-        preview.set(DataComponents.LORE, new ItemLore(List.of(plain("Icon: " + staged.iconId().orElse("none")))));
-        buttons.setItem(PREVIEW_SLOT, preview);
+        String unnamed = Text.string(player, TextKeys.EDITOR_TITLE_UNNAMED);
+        ItemStack preview = button(Boxes.item(staged.color()), staged.name().orElse(unnamed));
+        preview.set(DataComponents.LORE, new ItemLore(List.of(Text.grey(staged.iconId()
+                .map(id -> Text.string(player, TextKeys.EDITOR_PREVIEW_ICON, id))
+                .orElse(Text.string(player, TextKeys.EDITOR_PREVIEW_NO_ICON))))));
+        buttons.setItem(EditorLayout.PREVIEW, preview);
 
         ItemStack offHand = player.getOffhandItem();
-        if (offHand.isEmpty()) {
-            buttons.setItem(USE_OFF_HAND_SLOT, button(Items.DYE.pick(DyeColor.LIGHT_GRAY), "Use off-hand item (off-hand is empty)"));
+        ItemStack use;
+        if (!iconAllowed()) {
+            use = disabledLore(button(Items.DYE.pick(DyeColor.LIGHT_GRAY), Text.string(player, TextKeys.EDITOR_USE_OFFHAND)));
+        } else if (offHand.isEmpty()) {
+            use = button(Items.DYE.pick(DyeColor.LIGHT_GRAY), Text.string(player, TextKeys.EDITOR_USE_OFFHAND_EMPTY));
+        } else if (Icons.isBlocked(offHand, state.config)) {
+            use = button(Items.DYE.pick(DyeColor.LIGHT_GRAY), Text.string(player, TextKeys.EDITOR_USE_OFFHAND_BLOCKED));
         } else {
-            ItemStack use = offHand.copyWithCount(1);
-            use.set(DataComponents.CUSTOM_NAME, plain("Use off-hand item"));
-            buttons.setItem(USE_OFF_HAND_SLOT, use);
+            use = offHand.copyWithCount(1);
+            use.set(DataComponents.CUSTOM_NAME, Text.plain(Text.string(player, TextKeys.EDITOR_USE_OFFHAND)));
         }
-        buttons.setItem(REMOVE_ICON_SLOT, button(Items.BARRIER, "Remove icon"));
-        buttons.setItem(RENAME_SLOT, button(Items.NAME_TAG, "Rename…"));
-        buttons.setItem(CANCEL_SLOT, button(Items.CONCRETE.pick(DyeColor.RED), "Cancel"));
-        buttons.setItem(SAVE_SLOT, button(Items.CONCRETE.pick(DyeColor.LIME), "Save"));
+        buttons.setItem(EditorLayout.USE_OFFHAND, use);
+
+        ItemStack remove = button(Items.BARRIER, Text.string(player, TextKeys.EDITOR_REMOVE_ICON));
+        buttons.setItem(EditorLayout.REMOVE_ICON, iconAllowed() ? remove : disabledLore(remove));
+        ItemStack rename = button(Items.NAME_TAG, Text.string(player, TextKeys.EDITOR_RENAME));
+        buttons.setItem(EditorLayout.RENAME, nameAllowed() ? rename : disabledLore(rename));
+        buttons.setItem(EditorLayout.CANCEL, button(Items.CONCRETE.pick(DyeColor.RED), Text.string(player, TextKeys.EDITOR_CANCEL)));
+
+        ItemStack save = button(Items.CONCRETE.pick(DyeColor.LIME), Text.string(player, TextKeys.EDITOR_SAVE));
+        List<Cost> costs = player.isCreative() ? List.of() : Costs.forChanges(state.session.changes(), state.config);
+        if (!costs.isEmpty()) {
+            save.set(DataComponents.LORE, new ItemLore(List.of(
+                    Text.grey(Text.string(player, TextKeys.EDITOR_SAVE_COST, Payments.describe(player, costs))))));
+        }
+        buttons.setItem(EditorLayout.SAVE, save);
         broadcastChanges();
     }
 
-    private static String label(BoxColor color) {
-        if (color.dyeName() == null) {
-            return "Undyed";
-        }
-        String spaced = color.dyeName().replace('_', ' ');
-        return Character.toUpperCase(spaced.charAt(0)) + spaced.substring(1);
+    private ItemStack disabledLore(ItemStack stack) {
+        List<Component> lore = new ArrayList<>(stack.getOrDefault(DataComponents.LORE, ItemLore.EMPTY).lines());
+        lore.add(Text.grey(Text.string(player, TextKeys.EDITOR_FEATURE_DISABLED)));
+        stack.set(DataComponents.LORE, new ItemLore(lore));
+        return stack;
     }
 
     private static ItemStack button(Item item, String name) {
         ItemStack stack = new ItemStack(item);
-        stack.set(DataComponents.CUSTOM_NAME, plain(name));
+        stack.set(DataComponents.CUSTOM_NAME, Text.plain(name));
         return stack;
-    }
-
-    private static Component plain(String text) {
-        return Component.literal(text).withStyle(s -> s.withItalic(false).withColor(ChatFormatting.WHITE));
     }
 }

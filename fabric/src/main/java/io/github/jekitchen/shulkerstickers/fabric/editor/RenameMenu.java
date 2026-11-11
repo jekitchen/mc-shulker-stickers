@@ -41,7 +41,7 @@ public final class RenameMenu extends AnvilMenu {
     public static void open(ServerPlayer player, String current, Consumer<String> onConfirm, Runnable onCancel) {
         player.openMenu(new SimpleMenuProvider(
                 (id, inventory, p) -> new RenameMenu(id, player, current, onConfirm, onCancel),
-                Component.literal("Rename box")));
+                io.github.jekitchen.shulkerstickers.fabric.Text.tr(player, io.github.jekitchen.shulkerstickers.core.text.TextKeys.RENAME_TITLE)));
     }
 
     @Override

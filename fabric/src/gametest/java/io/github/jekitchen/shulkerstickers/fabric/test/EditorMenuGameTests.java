@@ -2,8 +2,9 @@ package io.github.jekitchen.shulkerstickers.fabric.test;
 
 import io.github.jekitchen.shulkerstickers.core.Anchor;
 import io.github.jekitchen.shulkerstickers.core.BoxColor;
-import io.github.jekitchen.shulkerstickers.fabric.data.Sticker;
+import io.github.jekitchen.shulkerstickers.core.data.Sticker;
 import io.github.jekitchen.shulkerstickers.fabric.data.StickerData;
+import io.github.jekitchen.shulkerstickers.core.editor.EditorLayout;
 import io.github.jekitchen.shulkerstickers.fabric.editor.EditorMenu;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,6 +29,8 @@ public class EditorMenuGameTests {
         player.getInventory().setItem(0, new ItemStack(Items.DIRT, 10));
         player.getInventory().setItem(5, new ItemStack(Items.DIAMOND, 3));
         player.setItemInHand(InteractionHand.OFF_HAND, new ItemStack(Items.COBBLESTONE, 7));
+        // The test box is locked; its key is a diamond.
+        player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.DIAMOND));
         return player;
     }
 
@@ -85,7 +88,7 @@ public class EditorMenuGameTests {
         ServerPlayer player = playerWithStuff(helper);
         EditorMenu menu = open(helper, player);
 
-        menu.clicked(EditorMenu.colorSlot(BoxColor.RED), 0, ContainerInput.PICKUP, player);
+        menu.clicked(BoxColor.RED.ordinal(), 0, ContainerInput.PICKUP, player);
 
         helper.assertValueEqual(menu.session().staged().color(), BoxColor.RED, "staged color");
         TestBoxes.assertLoaded(helper, BOX, BoxColor.UNDYED, Direction.UP);
@@ -100,14 +103,14 @@ public class EditorMenuGameTests {
         EditorMenu menu = open(helper, player);
         List<ItemStack> before = snapshot(player);
 
-        menu.clicked(EditorMenu.colorSlot(BoxColor.PURPLE), 0, ContainerInput.PICKUP, player);
-        menu.clicked(EditorMenu.USE_OFF_HAND_SLOT, 0, ContainerInput.PICKUP, player);
-        menu.clicked(EditorMenu.SAVE_SLOT, 0, ContainerInput.PICKUP, player);
+        menu.clicked(BoxColor.PURPLE.ordinal(), 0, ContainerInput.PICKUP, player);
+        menu.clicked(EditorLayout.USE_OFFHAND, 0, ContainerInput.PICKUP, player);
+        menu.clicked(EditorLayout.SAVE, 0, ContainerInput.PICKUP, player);
 
         helper.assertBlockState(BOX, s -> s.is(io.github.jekitchen.shulkerstickers.fabric.Boxes.block(BoxColor.PURPLE)),
                 s -> net.minecraft.network.chat.Component.literal("expected purple, got " + s));
         ShulkerBoxBlockEntity box = helper.getBlockEntity(BOX, ShulkerBoxBlockEntity.class);
-        helper.assertValueEqual(StickerData.read(box).map(Sticker::iconId), Optional.of("minecraft:cobblestone"), "icon");
+        helper.assertValueEqual(StickerData.read(box).flatMap(Sticker::iconId), Optional.of("minecraft:cobblestone"), "icon");
         helper.assertValueEqual(StickerData.read(box).map(Sticker::anchor), Optional.of(Anchor.LID), "anchor");
         assertSame(helper, before, player, "after save");
         helper.succeed();
@@ -120,25 +123,27 @@ public class EditorMenuGameTests {
         ServerPlayer player = playerWithStuff(helper);
         EditorMenu menu = open(helper, player);
 
-        menu.clicked(EditorMenu.colorSlot(BoxColor.RED), 0, ContainerInput.PICKUP, player);
-        menu.clicked(EditorMenu.REMOVE_ICON_SLOT, 0, ContainerInput.PICKUP, player);
-        menu.clicked(EditorMenu.CANCEL_SLOT, 0, ContainerInput.PICKUP, player);
+        menu.clicked(BoxColor.RED.ordinal(), 0, ContainerInput.PICKUP, player);
+        menu.clicked(EditorLayout.REMOVE_ICON, 0, ContainerInput.PICKUP, player);
+        menu.clicked(EditorLayout.CANCEL, 0, ContainerInput.PICKUP, player);
 
         TestBoxes.assertLoaded(helper, BOX, BoxColor.UNDYED, Direction.UP);
         helper.succeed();
     }
 
     @GameTest
-    public void removeIconThenSaveClearsSticker(GameTestHelper helper) {
+    public void removeIconKeepsTheNamesFace(GameTestHelper helper) {
         TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
         ServerPlayer player = playerWithStuff(helper);
         EditorMenu menu = open(helper, player);
 
-        menu.clicked(EditorMenu.REMOVE_ICON_SLOT, 0, ContainerInput.PICKUP, player);
-        menu.clicked(EditorMenu.SAVE_SLOT, 0, ContainerInput.PICKUP, player);
+        menu.clicked(EditorLayout.REMOVE_ICON, 0, ContainerInput.PICKUP, player);
+        menu.clicked(EditorLayout.SAVE, 0, ContainerInput.PICKUP, player);
 
         ShulkerBoxBlockEntity box = helper.getBlockEntity(BOX, ShulkerBoxBlockEntity.class);
-        helper.assertValueEqual(StickerData.read(box), Optional.empty(), "sticker");
+        // The box still has a name, so the sticker keeps its face for the name but has no icon.
+        helper.assertValueEqual(StickerData.read(box).flatMap(Sticker::iconId), Optional.empty(), "icon");
+        helper.assertValueEqual(StickerData.read(box).map(Sticker::anchor), Optional.of(Anchor.LID), "anchor kept for the name");
         helper.succeed();
     }
 }

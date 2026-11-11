@@ -2,10 +2,13 @@ package io.github.jekitchen.shulkerstickers.fabric;
 
 import io.github.jekitchen.shulkerstickers.fabric.data.StickerData;
 import io.github.jekitchen.shulkerstickers.fabric.display.StickerDisplays;
+import io.github.jekitchen.shulkerstickers.fabric.editor.EditorLocks;
 import io.github.jekitchen.shulkerstickers.fabric.editor.EditorMenu;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.loot.v3.LootTableEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
@@ -25,9 +28,13 @@ public final class ShulkerStickersFabric implements ModInitializer {
 
     @Override
     public void onInitialize() {
+        ServerLifecycleEvents.SERVER_STARTING.register(server -> Settings.load());
         registerGesture();
         registerDropCopy();
         StickerDisplays.register();
+        PlayerPrefs.register();
+        StickerCommands.register();
+        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> EditorLocks.releaseAll(handler.getPlayer().getUUID()));
         LOGGER.info("Shulker Stickers loaded");
     }
 
@@ -37,14 +44,19 @@ public final class ShulkerStickersFabric implements ModInitializer {
             if (hand != InteractionHand.MAIN_HAND
                     || !player.isSecondaryUseActive()
                     || !player.getMainHandItem().isEmpty()
-                    || player.isSpectator()
                     || !(level.getBlockState(hit.getBlockPos()).getBlock() instanceof ShulkerBoxBlock)) {
                 return InteractionResult.PASS;
             }
-            if (level instanceof ServerLevel serverLevel && player instanceof ServerPlayer serverPlayer) {
-                // Spike: no permission, claim, lock or adventure-mode checks yet.
-                EditorMenu.open(serverPlayer, serverLevel, hit.getBlockPos(), hit.getDirection());
+            if (player instanceof ServerPlayer serverPlayer && PlayerPrefs.gestureOff(serverPlayer)) {
+                return InteractionResult.PASS;
             }
+            if (player.isSpectator()) {
+                return InteractionResult.PASS;
+            }
+            if (level instanceof ServerLevel serverLevel && player instanceof ServerPlayer serverPlayer) {
+                EditorMenu.tryOpen(serverPlayer, serverLevel, hit.getBlockPos(), hit.getDirection());
+            }
+            // Consumed even when refused, so the off-hand block isn't placed instead (PRD §5.1).
             return InteractionResult.SUCCESS;
         });
     }

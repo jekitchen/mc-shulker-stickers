@@ -1,11 +1,18 @@
 package io.github.jekitchen.shulkerstickers.fabric.data;
 
-import io.github.jekitchen.shulkerstickers.core.Anchor;
-import java.util.Arrays;
+import io.github.jekitchen.shulkerstickers.core.data.Sticker;
+import io.github.jekitchen.shulkerstickers.core.data.StickerCodec;
+import io.github.jekitchen.shulkerstickers.core.data.StickerFormat;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NumericTag;
+import net.minecraft.nbt.StringTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -13,61 +20,64 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Reads and writes sticker data in {@code minecraft:custom_data → PublicBukkitValues}, the same
- * layout Paper uses for plugin data (PRD §6.1). Other keys are always left alone.
- *
- * <p>TODO(after spike): the key names and the version belong in core, shared with Paper.
+ * layout Paper uses for plugin data (PRD §6.1). The format itself lives in core
+ * ({@link StickerFormat}, {@link StickerCodec}); this class only moves it in and out of NBT.
+ * Keys that aren't ours are always left alone.
  */
 public final class StickerData {
 
-    public static final String BUKKIT_VALUES = "PublicBukkitValues";
-    public static final String KEY_VERSION = "shulker_stickers:v";
-    public static final String KEY_ICON_ID = "shulker_stickers:icon_id";
-    public static final String KEY_ICON_VISUAL = "shulker_stickers:icon_visual";
-    public static final String KEY_ANCHOR = "shulker_stickers:anchor";
-    public static final String KEY_ROT = "shulker_stickers:rot";
-    public static final int FORMAT_VERSION = 1;
+    /**
+     * Fabric/Paper addition to PRD §6.1: set to 1 when the name was saved by a player without
+     * {@code shulker_stickers.name.display}, so the name is kept but not drawn on the box.
+     */
+    public static final String NAME_HIDDEN = "name_hidden";
 
     private StickerData() {
     }
 
     public static Optional<Sticker> read(BlockEntity blockEntity) {
-        return read(blockEntity.components().get(DataComponents.CUSTOM_DATA));
+        return StickerCodec.decode(rawValues(blockEntity));
     }
 
     public static Optional<Sticker> read(ItemStack stack) {
-        return read(stack.get(DataComponents.CUSTOM_DATA));
+        return StickerCodec.decode(rawValues(bukkitValues(stack.get(DataComponents.CUSTOM_DATA))));
     }
 
-    private static Optional<Sticker> read(@Nullable CustomData data) {
-        if (data == null) {
-            return Optional.empty();
-        }
-        CompoundTag bukkit = data.copyTag().getCompoundOrEmpty(BUKKIT_VALUES);
-        Optional<String> iconId = bukkit.getString(KEY_ICON_ID);
-        if (iconId.isEmpty() || bukkit.getIntOr(KEY_VERSION, 0) != FORMAT_VERSION) {
-            return Optional.empty();
-        }
-        String anchorName = bukkit.getStringOr(KEY_ANCHOR, Anchor.LID.serializedName());
-        Anchor anchor = Arrays.stream(Anchor.values())
-                .filter(a -> a.serializedName().equals(anchorName))
-                .findFirst()
-                .orElse(Anchor.LID);
-        return Optional.of(new Sticker(
-                iconId.get(),
-                bukkit.getStringOr(KEY_ICON_VISUAL, ""),
-                anchor,
-                Math.floorMod(bukkit.getIntOr(KEY_ROT, 0), 4)));
+    /** Our keys (short names) and their values, as found; for decoding and {@code inspect}. */
+    public static Map<String, Object> rawValues(BlockEntity blockEntity) {
+        return rawValues(bukkitValues(blockEntity.components().get(DataComponents.CUSTOM_DATA)));
+    }
+
+    public static boolean isNameHidden(BlockEntity blockEntity) {
+        return bukkitValues(blockEntity.components().get(DataComponents.CUSTOM_DATA))
+                .getIntOr(StickerFormat.fullKey(NAME_HIDDEN), 0) != 0;
     }
 
     /** Sets or (with an empty sticker) removes the sticker on a block entity. */
     public static void write(BlockEntity blockEntity, Optional<Sticker> sticker) {
-        CustomData current = blockEntity.components().getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
-        CustomData updated = apply(current, sticker);
-        blockEntity.setComponents(DataComponentMap.builder()
-                .addAll(blockEntity.components())
-                .set(DataComponents.CUSTOM_DATA, updated.isEmpty() ? null : updated)
-                .build());
-        blockEntity.setChanged();
+        update(blockEntity, bukkit -> {
+            for (String key : StickerFormat.KEYS) {
+                bukkit.remove(StickerFormat.fullKey(key));
+            }
+            sticker.ifPresent(s -> StickerCodec.encode(s).forEach((key, value) -> {
+                String full = StickerFormat.fullKey(key);
+                if (value instanceof Integer i) {
+                    bukkit.putInt(full, i);
+                } else {
+                    bukkit.putString(full, value.toString());
+                }
+            }));
+        });
+    }
+
+    public static void setNameHidden(BlockEntity blockEntity, boolean hidden) {
+        update(blockEntity, bukkit -> {
+            if (hidden) {
+                bukkit.putInt(StickerFormat.fullKey(NAME_HIDDEN), 1);
+            } else {
+                bukkit.remove(StickerFormat.fullKey(NAME_HIDDEN));
+            }
+        });
     }
 
     /** Copies the whole {@code custom_data} component of a block entity onto a dropped item. */
@@ -78,26 +88,40 @@ public final class StickerData {
         }
     }
 
-    private static CustomData apply(CustomData data, Optional<Sticker> sticker) {
-        return data.update(tag -> {
-            CompoundTag bukkit = tag.getCompoundOrEmpty(BUKKIT_VALUES);
-            for (String key : new String[] {KEY_VERSION, KEY_ICON_ID, KEY_ICON_VISUAL, KEY_ANCHOR, KEY_ROT}) {
-                bukkit.remove(key);
-            }
-            sticker.ifPresent(s -> {
-                bukkit.putInt(KEY_VERSION, FORMAT_VERSION);
-                bukkit.putString(KEY_ICON_ID, s.iconId());
-                if (!s.iconVisual().isEmpty()) {
-                    bukkit.putString(KEY_ICON_VISUAL, s.iconVisual());
-                }
-                bukkit.putString(KEY_ANCHOR, s.anchor().serializedName());
-                bukkit.putInt(KEY_ROT, s.rot());
-            });
+    private static void update(BlockEntity blockEntity, Consumer<CompoundTag> edit) {
+        CustomData current = blockEntity.components().getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
+        CustomData updated = current.update(tag -> {
+            CompoundTag bukkit = tag.getCompoundOrEmpty(StickerFormat.BUKKIT_VALUES);
+            edit.accept(bukkit);
             if (bukkit.isEmpty()) {
-                tag.remove(BUKKIT_VALUES);
+                tag.remove(StickerFormat.BUKKIT_VALUES);
             } else {
-                tag.put(BUKKIT_VALUES, bukkit);
+                tag.put(StickerFormat.BUKKIT_VALUES, bukkit);
             }
         });
+        blockEntity.setComponents(DataComponentMap.builder()
+                .addAll(blockEntity.components())
+                .set(DataComponents.CUSTOM_DATA, updated.isEmpty() ? null : updated)
+                .build());
+        blockEntity.setChanged();
+    }
+
+    private static CompoundTag bukkitValues(@Nullable CustomData data) {
+        return data == null ? new CompoundTag() : data.copyTag().getCompoundOrEmpty(StickerFormat.BUKKIT_VALUES);
+    }
+
+    private static Map<String, Object> rawValues(CompoundTag bukkit) {
+        Map<String, Object> values = new LinkedHashMap<>();
+        for (String key : StickerFormat.KEYS) {
+            Tag tag = bukkit.get(StickerFormat.fullKey(key));
+            if (tag instanceof StringTag(String s)) {
+                values.put(key, s);
+            } else if (tag instanceof NumericTag n) {
+                values.put(key, n.box());
+            } else if (tag != null) {
+                values.put(key, tag.toString());
+            }
+        }
+        return values;
     }
 }

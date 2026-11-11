@@ -20,6 +20,10 @@ dependencies {
 
     implementation(project(":core"))
     include(project(":core"))
+
+    // Optional integrations: used only when the server has them installed (not bundled).
+    compileOnly("me.lucko:fabric-permissions-api:0.7.0")
+    compileOnly("eu.pb4:common-protection-api:2.0.0")
 }
 
 fabricApi {

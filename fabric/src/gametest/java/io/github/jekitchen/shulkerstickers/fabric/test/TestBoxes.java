@@ -3,7 +3,7 @@ package io.github.jekitchen.shulkerstickers.fabric.test;
 import io.github.jekitchen.shulkerstickers.core.Anchor;
 import io.github.jekitchen.shulkerstickers.core.BoxColor;
 import io.github.jekitchen.shulkerstickers.fabric.Boxes;
-import io.github.jekitchen.shulkerstickers.fabric.data.Sticker;
+import io.github.jekitchen.shulkerstickers.core.data.Sticker;
 import io.github.jekitchen.shulkerstickers.fabric.data.StickerData;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,7 +25,7 @@ import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
 /** Builds a fully loaded test box: 27 distinct stacks, a name, a lock and a sticker. */
 final class TestBoxes {
 
-    static final Sticker STICKER = new Sticker("minecraft:cobblestone", "", Anchor.LID, 2);
+    static final Sticker STICKER = new Sticker(java.util.Optional.of("minecraft:cobblestone"), java.util.Optional.empty(), Anchor.LID, 2, java.util.Optional.empty());
     static final Component NAME = Component.literal("Ores");
 
     private TestBoxes() {

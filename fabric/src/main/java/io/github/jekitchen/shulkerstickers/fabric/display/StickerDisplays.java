@@ -4,25 +4,32 @@ import eu.pb4.polymer.virtualentity.api.ElementHolder;
 import eu.pb4.polymer.virtualentity.api.attachment.ChunkAttachment;
 import eu.pb4.polymer.virtualentity.api.elements.ItemDisplayElement;
 import eu.pb4.polymer.virtualentity.api.elements.TextDisplayElement;
-import io.github.jekitchen.shulkerstickers.fabric.data.Sticker;
+import io.github.jekitchen.shulkerstickers.core.Anchor;
+import io.github.jekitchen.shulkerstickers.core.Faces;
+import io.github.jekitchen.shulkerstickers.core.config.StickerConfig;
+import io.github.jekitchen.shulkerstickers.core.data.Sticker;
+import io.github.jekitchen.shulkerstickers.core.rules.NameRules;
+import io.github.jekitchen.shulkerstickers.fabric.Boxes;
+import io.github.jekitchen.shulkerstickers.fabric.Settings;
+import io.github.jekitchen.shulkerstickers.fabric.data.Icons;
 import io.github.jekitchen.shulkerstickers.fabric.data.StickerData;
-import io.github.jekitchen.shulkerstickers.fabric.editor.DisplayFaces;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.WeakHashMap;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerBlockEntityEvents;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.util.Brightness;
 import net.minecraft.world.entity.Display;
-import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
 import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
 import net.minecraft.world.phys.Vec3;
@@ -32,9 +39,7 @@ import org.joml.Vector3f;
 /**
  * Draws icons and names on placed boxes with Polymer virtual entities: packets only, nothing is
  * saved to the world (PRD §7.2). One holder per box, re-created when its block entity loads.
- *
- * <p>Spike limits: displays are not hidden while the box is open, the icon is drawn from the item
- * ID only (no visual properties), and the view ranges are fixed.
+ * While a box is opening or open, its displays are removed and come back when it closes (§5.5).
  */
 public final class StickerDisplays {
 
@@ -42,12 +47,12 @@ public final class StickerDisplays {
     private static final double FACE_OFFSET = 0.51;
     private static final float ICON_SCALE = 0.5f;
     private static final float NAME_SCALE = 0.3f;
-    private static final int NAME_MAX_CHARS = 24;
-    /** Vanilla view_range is a multiplier of 64 blocks: 0.5 = 32 blocks, 0.25 = 16 blocks. */
-    private static final float ICON_VIEW_RANGE = 0.5f;
-    private static final float NAME_VIEW_RANGE = 0.25f;
+    /** Vanilla display view_range is a multiplier of 64 blocks. */
+    private static final float VIEW_RANGE_UNIT = 64f;
 
     private static final Map<ServerLevel, Map<BlockPos, ElementHolder>> HOLDERS = new WeakHashMap<>();
+    /** Boxes whose displays are hidden because the box is open. */
+    private static final Map<ServerLevel, Set<BlockPos>> HIDDEN = new WeakHashMap<>();
 
     private StickerDisplays() {
     }
@@ -61,8 +66,10 @@ public final class StickerDisplays {
         ServerBlockEntityEvents.BLOCK_ENTITY_UNLOAD.register((blockEntity, level) -> {
             if (blockEntity instanceof ShulkerBoxBlockEntity) {
                 remove(level, blockEntity.getBlockPos());
+                HIDDEN.getOrDefault(level, new HashSet<>()).remove(blockEntity.getBlockPos());
             }
         });
+        ServerTickEvents.END_LEVEL_TICK.register(StickerDisplays::updateOpenBoxes);
     }
 
     public static void refresh(ServerLevel level, BlockPos pos) {
@@ -70,7 +77,15 @@ public final class StickerDisplays {
             show(level, box);
         } else {
             remove(level, pos);
+            HIDDEN.getOrDefault(level, new HashSet<>()).remove(pos);
         }
+    }
+
+    /** Redraws every box in a level, e.g. after a config reload. */
+    public static void refreshAll(ServerLevel level) {
+        Set<BlockPos> positions = new HashSet<>(HOLDERS.getOrDefault(level, Map.of()).keySet());
+        positions.addAll(HIDDEN.getOrDefault(level, Set.of()));
+        positions.forEach(pos -> refresh(level, pos));
     }
 
     public static void remove(ServerLevel level, BlockPos pos) {
@@ -81,61 +96,112 @@ public final class StickerDisplays {
         }
     }
 
-    /** Number of boxes currently drawn in a level; for tests and /shulkerstickers inspect. */
+    /** Number of boxes currently drawn in a level; for tests. */
     public static int count(ServerLevel level) {
         return HOLDERS.getOrDefault(level, Map.of()).size();
+    }
+
+    public static boolean isShown(ServerLevel level, BlockPos pos) {
+        return HOLDERS.getOrDefault(level, Map.of()).containsKey(pos);
+    }
+
+    public static boolean isHidden(ServerLevel level, BlockPos pos) {
+        return HIDDEN.getOrDefault(level, Set.of()).contains(pos);
+    }
+
+    /** The holder's elements, for tests. */
+    public static Optional<ElementHolder> holder(ServerLevel level, BlockPos pos) {
+        return Optional.ofNullable(HOLDERS.getOrDefault(level, Map.of()).get(pos));
+    }
+
+    private static boolean isOpen(ShulkerBoxBlockEntity box) {
+        return box.getAnimationStatus() != ShulkerBoxBlockEntity.AnimationStatus.CLOSED;
+    }
+
+    private static void updateOpenBoxes(ServerLevel level) {
+        if (!Settings.config().hideWhileOpen()) {
+            if (!HIDDEN.getOrDefault(level, Set.of()).isEmpty()) {
+                new ArrayList<>(HIDDEN.get(level)).forEach(pos -> refresh(level, pos));
+            }
+            return;
+        }
+        Map<BlockPos, ElementHolder> holders = HOLDERS.get(level);
+        if (holders != null && !holders.isEmpty()) {
+            for (BlockPos pos : new ArrayList<>(holders.keySet())) {
+                if (level.getBlockEntity(pos) instanceof ShulkerBoxBlockEntity box && isOpen(box)) {
+                    remove(level, pos);
+                    HIDDEN.computeIfAbsent(level, l -> new HashSet<>()).add(pos);
+                }
+            }
+        }
+        Set<BlockPos> hidden = HIDDEN.get(level);
+        if (hidden != null && !hidden.isEmpty()) {
+            for (BlockPos pos : new ArrayList<>(hidden)) {
+                if (!(level.getBlockEntity(pos) instanceof ShulkerBoxBlockEntity box)) {
+                    hidden.remove(pos);
+                } else if (!isOpen(box)) {
+                    hidden.remove(pos);
+                    show(level, box);
+                }
+            }
+        }
     }
 
     private static void show(ServerLevel level, ShulkerBoxBlockEntity box) {
         BlockPos pos = box.getBlockPos().immutable();
         remove(level, pos);
+        StickerConfig config = Settings.config();
+        if (config.hideWhileOpen() && isOpen(box)) {
+            HIDDEN.computeIfAbsent(level, l -> new HashSet<>()).add(pos);
+            return;
+        }
+        HIDDEN.getOrDefault(level, new HashSet<>()).remove(pos);
 
         Optional<Sticker> sticker = StickerData.read(box);
-        Optional<String> name = Optional.ofNullable(box.getCustomName()).map(Component::getString);
-        if (sticker.isEmpty()) {
-            // MVP: a name is only drawn on the face that carries the icon. A name-only box keeps the
-            // vanilla behavior (name shown in the GUI title) until the PRD decides which face to use.
+        Optional<String> name = Optional.ofNullable(box.getCustomName()).map(Component::getString)
+                .filter(n -> config.nameDisplayEnabled() && !StickerData.isNameHidden(box));
+        Optional<ItemStack> icon = sticker.flatMap(s -> Icons.displayStack(s, config, level.registryAccess()));
+        if (icon.isEmpty() && name.isEmpty()) {
             return;
         }
 
         Direction facing = box.getBlockState().getValue(ShulkerBoxBlock.FACING);
-        Direction face = DisplayFaces.face(facing, sticker.get());
-        int rot = face.getAxis() == Direction.Axis.Y ? sticker.get().rot() : 0;
+        // A name with no stored anchor (e.g. renamed at an anvil) goes on the lid.
+        Anchor anchor = sticker.map(Sticker::anchor).orElse(Anchor.LID);
+        Direction face = Boxes.direction(Faces.iconFace(anchor, Boxes.face(facing), sticker.flatMap(Sticker::face)));
+        int rot = face.getAxis() == Direction.Axis.Y ? sticker.map(Sticker::rot).orElse(0) : 0;
         Quaternionf rotation = faceRotation(face, rot);
 
         ElementHolder holder = new ElementHolder();
-        ItemDisplayElement icon = new ItemDisplayElement(iconStack(sticker.get().iconId()));
-        icon.setItemDisplayContext(ItemDisplayContext.FIXED);
-        icon.setLeftRotation(rotation);
-        icon.setScale(new Vector3f(ICON_SCALE));
-        icon.setViewRange(ICON_VIEW_RANGE);
-        holder.addElement(icon);
+        icon.ifPresent(stack -> {
+            ItemDisplayElement element = new ItemDisplayElement(stack);
+            element.setItemDisplayContext(ItemDisplayContext.FIXED);
+            element.setLeftRotation(rotation);
+            element.setScale(new Vector3f(ICON_SCALE));
+            element.setViewRange(config.iconViewRange() / VIEW_RANGE_UNIT);
+            if (config.iconFullBright()) {
+                element.setBrightness(Brightness.FULL_BRIGHT);
+            }
+            holder.addElement(element);
+        });
 
         name.ifPresent(text -> {
-            TextDisplayElement label = new TextDisplayElement(Component.literal(shorten(text)));
+            TextDisplayElement label = new TextDisplayElement(Component.literal(NameRules.displayText(text, config.nameMaxDisplayChars())));
             label.setBillboardMode(Display.BillboardConstraints.FIXED);
             label.setLeftRotation(rotation);
             label.setScale(new Vector3f(NAME_SCALE));
-            // Under the icon, measured in the face's own "down" direction.
-            label.setTranslation(new Vector3f(0, -0.42f, 0).rotate(rotation));
+            // Under the icon, measured in the face's own "down" direction; centered with no icon.
+            float down = icon.isPresent() ? -0.42f : -0.05f;
+            label.setTranslation(new Vector3f(0, down, 0).rotate(rotation));
             label.setShadow(true);
             label.setBackground(0);
-            label.setViewRange(NAME_VIEW_RANGE);
+            label.setViewRange(config.nameViewRange() / VIEW_RANGE_UNIT);
             holder.addElement(label);
         });
 
         Vec3 at = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(FACE_OFFSET));
         ChunkAttachment.of(holder, level, at);
         HOLDERS.computeIfAbsent(level, l -> new HashMap<>()).put(pos, holder);
-    }
-
-    private static ItemStack iconStack(String iconId) {
-        Item item = BuiltInRegistries.ITEM.getOptional(Identifier.tryParse(iconId)).orElse(Items.AIR);
-        return new ItemStack(item);
-    }
-
-    private static String shorten(String name) {
-        return name.length() <= NAME_MAX_CHARS ? name : name.substring(0, NAME_MAX_CHARS - 1) + "…";
     }
 
     /**
