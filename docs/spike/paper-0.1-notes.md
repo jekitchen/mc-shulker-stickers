@@ -125,3 +125,39 @@ Run `./gradlew :paper:runServer` (and `:paper:runCanvas`), join with an unmodded
 - Using the lid animation state (open/close events are used instead).
 - Reach is checked every 10 ticks rather than every tick.
 - The rename screen and icon orientation still need a real client.
+
+## Review fixes (11 Nov 2026)
+
+Fixes for the Paper code review. New tests are in `SaveSafetyTest` (16 tests); the self-test has 3 new checks.
+
+**Save**
+- **One-shot.** Pressing Save sets `Session.saving` and captures a `SaveRequest` snapshot on the player thread. Later presses and Esc are ignored until the save finishes, and the region task only reads the snapshot.
+- **Charged after applying.** `finishSave` charges, on the player thread, only for the parts `apply` reports as applied, at the prices from when Save was pressed. A color change refused because the box is open costs nothing. Nothing is charged if the save fails or the player logs out first. So there are no refunds to lose; the cost of that is that a logout in the 1-tick window means a free edit.
+
+**Data**
+- **Unreadable data is kept.** A name-only save writes anchor and face only when the box has no sticker keys at all (`StickerStore.hasData`). Data this version can't read (e.g. `v=99`) is replaced only when the player changes the icon.
+
+**Box identity**
+- **A box replaced during an edit counts as gone.** Break, destroy, block/entity explosion and piston events on a box being edited set `Session.boxGone`. The editor then closes with "The box was moved or broken", and a pending Save is refused, writes nothing and charges nothing.
+- **No new persisted key.** `/setblock` and WorldEdit fire no event; for those, the existing position-and-color check still applies.
+
+**Dispensers**
+- **Only a box the dispense placed gets the sticker.** The target must be empty or replaceable at dispense time, and one tick later it must be a box of the dispensed type with no data. A box already standing there is never labelled.
+
+**Disable and threading**
+- **Plugin disable.** `onDisable` closes every editor and rename screen (so the menu can't become a free chest), releases locks, and removes all displays.
+- **Disable on Folia/Canvas.** There a plugin is only disabled at shutdown and there's no world-wide entity access, so players and entities not owned by the disabling thread are skipped, and so is the stray sweep. That is safe because displays are never saved.
+- **Menu switches are deferred.** Rename, Cancel, rename-confirm and the empty Save open or close menus on the player's next tick, not inside `InventoryClickEvent`.
+- **Same-player reopen** on the same box keeps its lock.
+- **A cancelled menu open** (another plugin) ends the session.
+
+**Input rules**
+- **All editing off means vanilla.** If color, icon and name editing are all off in the config, the gesture is vanilla and the box opens normally.
+- **Rename text is filtered** like vanilla's `StringUtil.filterText` (no `§`, no control characters), as a second line of defense after vanilla's own filter.
+
+**Tests**
+- **AC-12:** MockBukkit tests now cover number keys, the off-hand swap, double-click, drag and clicks outside the window.
+
+**Pushed back**
+- **"Keep the editor open when apply fails."** Apply-time failures are exactly PRD §9's cases (box broken, moved, changed or locked), and §9 says the editor closes. Pre-apply refusals (cost, blocked word, blocked icon) already keep it open.
+- **"Send a comparator update after recolor."** The Paper API has no analog-output-only update, and a neighbor update would fire observers (AC-16). A comparator's output depends only on the contents, which a recolor doesn't change, so the signal stays correct.

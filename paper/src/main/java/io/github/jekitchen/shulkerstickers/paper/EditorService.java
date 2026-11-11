@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
@@ -39,6 +40,12 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import com.destroystokyo.paper.event.block.BlockDestroyEvent;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockPistonExtendEvent;
+import org.bukkit.event.block.BlockPistonRetractEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -75,6 +82,13 @@ final class EditorService implements Listener {
         AnvilView renameView;
         /** The editor menu currently shown to the player, if any. */
         Inventory editorInventory;
+        /** Set once Save is pressed: further presses and Esc are ignored until the save finishes. */
+        volatile boolean saving;
+        /**
+         * Set when the box this editor opened on is broken, blown up or pushed. A box placed
+         * again at the same spot is a different box, so Save must refuse (PRD §6.3, §9).
+         */
+        final AtomicBoolean boxGone = new AtomicBoolean();
 
         Session(UUID player, BlockKey box, BlockFace clickedFace, int rotation, EditorSession editor) {
             this.player = player;
@@ -119,7 +133,12 @@ final class EditorService implements Listener {
         }
         Session previous = sessions.get(player.getUniqueId());
         if (previous != null) {
-            end(previous);
+            if (previous.box.equals(key)) {
+                sessions.remove(previous.player, previous); // same box: keep the lock just taken
+                clearRenameView(previous);
+            } else {
+                end(previous);
+            }
         }
         BoxColor color = BoxColor.fromItemId(block.getType().getKey().toString()).orElse(BoxColor.UNDYED);
         Optional<Sticker> sticker = StickerStore.read(box.getPersistentDataContainer());
@@ -131,6 +150,10 @@ final class EditorService implements Listener {
         Session session = new Session(player.getUniqueId(), key, clickedFace, rotation, new EditorSession(original));
         sessions.put(player.getUniqueId(), session);
         showEditor(player, session);
+        if (player.getOpenInventory().getTopInventory() != session.editorInventory) {
+            end(session); // another plugin cancelled the menu opening
+            return;
+        }
         watchReach(player, session);
         player.playSound(player.getLocation(), Sound.BLOCK_SHULKER_BOX_OPEN, 0.6f, 1.2f);
     }
@@ -238,7 +261,7 @@ final class EditorService implements Listener {
         }
         // Anti-duplication: the editor never lets an item move, whatever the click (AC-12).
         event.setCancelled(true);
-        if (!isButtonPress(event.getClick(), event.getRawSlot())) {
+        if (session.saving || !isButtonPress(event.getClick(), event.getRawSlot())) {
             return;
         }
         Player player = (Player) event.getWhoClicked();
@@ -287,12 +310,12 @@ final class EditorService implements Listener {
                     }
                     case RENAME -> {
                         if (nameAllowed(player)) {
-                            openRename(player, session);
+                            onPlayerThread(player, session, () -> openRename(player, session));
                         }
                         return;
                     }
                     case CANCEL -> {
-                        player.closeInventory(); // the close handler discards
+                        closeLater(player); // the close handler discards
                         return;
                     }
                     case SAVE -> {
@@ -362,10 +385,28 @@ final class EditorService implements Listener {
         if (session == null) {
             return;
         }
-        session.editor.stageName(NameRules.clamp(Objects.requireNonNullElse(text, "")));
-        session.closingOnPurpose = true;
-        clearRenameView(session);
-        showEditor(player, session);
+        session.editor.stageName(NameRules.clamp(cleanRenameText(Objects.requireNonNullElse(text, ""))));
+        onPlayerThread(player, session, () -> {
+            session.closingOnPurpose = true;
+            clearRenameView(session);
+            showEditor(player, session);
+        });
+    }
+
+    /**
+     * Opening or closing menus inside an inventory click is unsafe (Bukkit javadoc), so it
+     * runs on the player's next tick, if the session is still current.
+     */
+    private void onPlayerThread(Player player, Session session, Runnable action) {
+        player.getScheduler().run(plugin, t -> {
+            if (sessions.get(player.getUniqueId()) == session) {
+                action.run();
+            }
+        }, null);
+    }
+
+    private void closeLater(Player player) {
+        player.getScheduler().run(plugin, t -> player.closeInventory(), null);
     }
 
     private void clearRenameView(Session session) {
@@ -395,7 +436,7 @@ final class EditorService implements Listener {
             }, null);
             return;
         }
-        if (editorSession(player.getUniqueId(), event.getView()) == session) {
+        if (editorSession(player.getUniqueId(), event.getView()) == session && !session.saving) {
             discard(player, session);
         }
     }
@@ -481,13 +522,20 @@ final class EditorService implements Listener {
 
     // ---- saving (PRD §6.3) ---------------------------------------------------------------
 
-    /** Player thread: check, charge, then apply on the box's region thread. */
+    /**
+     * Player thread: check, then apply on the box's region thread, then charge on the player
+     * thread for what was actually applied. Save is one-shot: the staged state is captured
+     * now, and further presses are ignored until it finishes.
+     */
     private void save(Player player, Session session) {
+        if (session.saving) {
+            return;
+        }
         Changes changes = session.editor.changes();
         if (changes.isEmpty()) {
             session.closingOnPurpose = true;
             end(session);
-            player.closeInventory();
+            closeLater(player);
             return;
         }
         Optional<String> refusal = checkSave(player, session, changes);
@@ -495,17 +543,19 @@ final class EditorService implements Listener {
             player.sendActionBar(Component.text(refusal.get(), NamedTextColor.RED));
             return;
         }
-        List<Cost> costs = Payments.costsFor(player, Costs.forChanges(changes, settings.config()));
-        Payments.charge(player, costs);
-        boolean hideName = !player.hasPermission(Permissions.NAME_DISPLAY);
         Location location = session.box.location();
         if (location == null) {
-            Payments.refund(player, costs);
             return;
         }
+        session.saving = true;
+        StickerConfig config = settings.config();
+        boolean hideName = !player.hasPermission(Permissions.NAME_DISPLAY);
+        SaveRequest request = new SaveRequest(session.editor.original(), session.editor.staged(), changes,
+                session.clickedFace, session.rotation, hideName, session.boxGone);
         plugin.getServer().getRegionScheduler().execute(plugin, location, () -> {
-            SaveResult result = apply(location.getBlock(), session, changes, hideName);
-            player.getScheduler().run(plugin, t -> finishSave(player, session, costs, result), null);
+            SaveResult result = apply(location.getBlock(), request);
+            // If the player has logged out by now, nothing is charged (see notes).
+            player.getScheduler().run(plugin, t -> finishSave(player, session, config, result), null);
         });
     }
 
@@ -531,14 +581,21 @@ final class EditorService implements Listener {
         return Optional.empty();
     }
 
-    private void finishSave(Player player, Session session, List<Cost> costs, SaveResult result) {
+    /** Player thread. Charges only for the parts that were applied, at the prices when Save was pressed. */
+    private void finishSave(Player player, Session session, StickerConfig config, SaveResult result) {
         session.closingOnPurpose = true;
         end(session);
         player.closeInventory();
         if (!result.saved()) {
-            Payments.refund(player, costs);
+            // The box was broken, moved, recolored or locked meanwhile: the editor closes (PRD §9).
             player.sendActionBar(Texts.text(player, NamedTextColor.RED, result.messageKey()));
             return;
+        }
+        List<Cost> costs = Payments.costsFor(player, Costs.forChanges(result.applied(), config));
+        if (Payments.canPay(player, costs)) {
+            Payments.charge(player, costs);
+        } else {
+            plugin.getLogger().warning(player.getName() + " could no longer pay for a saved edit; not charged");
         }
         if (result.messageKey() != null) {
             player.sendActionBar(Texts.text(player, NamedTextColor.YELLOW, result.messageKey()));
@@ -546,36 +603,47 @@ final class EditorService implements Listener {
         player.playSound(player.getLocation(), Sound.BLOCK_SHULKER_BOX_CLOSE, 0.6f, 1.2f);
     }
 
-    record SaveResult(boolean saved, String messageKey) {}
+    /** Everything a Save needs, captured on the player thread so later clicks can't change it. */
+    record SaveRequest(BoxState original, BoxState staged, Changes changes, BlockFace clickedFace, int rotation,
+            boolean hideName, AtomicBoolean boxGone) {}
+
+    /** {@code applied} is what actually changed on the box (a refused color is left out). */
+    record SaveResult(boolean saved, String messageKey, Changes applied) {}
 
     /**
      * Region thread only. Refuses if the box was broken, moved, recolored or locked since
      * the editor opened. If someone has the box open, the color change is refused and the
      * name and icon still apply (PRD §5.2, §9).
      */
-    SaveResult apply(Block block, Session session, Changes changes, boolean hideName) {
-        BoxState original = session.editor.original();
+    SaveResult apply(Block block, SaveRequest request) {
+        BoxState original = request.original();
+        Changes changes = request.changes();
+        boolean hideName = request.hideName();
+        if (request.boxGone().get()) {
+            return new SaveResult(false, TextKeys.SAVE_BOX_GONE, NOTHING);
+        }
         if (!Tag.SHULKER_BOXES.isTagged(block.getType()) || !(block.getState() instanceof ShulkerBox box)
                 || !block.getType().getKey().toString().equals(original.color().itemId())) {
-            return new SaveResult(false, TextKeys.SAVE_BOX_GONE);
+            return new SaveResult(false, TextKeys.SAVE_BOX_GONE, NOTHING);
         }
         if (box instanceof Lockable lockable && lockable.isLocked()) {
-            return new SaveResult(false, TextKeys.DENY_LOCKED);
+            return new SaveResult(false, TextKeys.DENY_LOCKED, NOTHING);
         }
-        BoxState staged = session.editor.staged();
+        BoxState staged = request.staged();
         boolean inUse = changes.color() && !box.getInventory().getViewers().isEmpty();
         var pdc = box.getPersistentDataContainer();
         BlockFace facing = ((Directional) block.getBlockData()).getFacing();
-        Optional<Sticker> current = StickerStore.read(pdc);
 
         if (changes.name()) {
             box.customName(staged.name().map(Component::text).orElse(null));
             StickerStore.setNameHidden(pdc, staged.name().isPresent() && hideName);
         }
-        if (changes.icon() || (changes.name() && staged.name().isPresent() && current.isEmpty())) {
+        // A name-only save gives a box with no sticker data a face for the name. Existing
+        // data, even data this version can't read, is only replaced when the icon changed.
+        if (changes.icon() || (changes.name() && staged.name().isPresent() && !StickerStore.hasData(pdc))) {
             if (staged.iconId().isPresent() || staged.name().isPresent()) {
                 // A name-only sticker records the clicked face so the name has a face to go on.
-                StickerStore.write(pdc, stickerAt(facing, session, staged.iconId(), staged.iconVisual()));
+                StickerStore.write(pdc, stickerAt(facing, request, staged.iconId(), staged.iconVisual()));
             } else {
                 clearStickerKeys(pdc);
             }
@@ -585,7 +653,8 @@ final class EditorService implements Listener {
             BoxRecolorer.recolor(block, staged.color());
         }
         displays.refresh(block);
-        return new SaveResult(true, inUse ? TextKeys.SAVE_BOX_IN_USE : null);
+        Changes applied = new Changes(changes.color() && !inUse, changes.icon(), changes.name());
+        return new SaveResult(true, inUse ? TextKeys.SAVE_BOX_IN_USE : null, applied);
     }
 
     private static void clearStickerKeys(org.bukkit.persistence.PersistentDataContainer pdc) {
@@ -594,14 +663,115 @@ final class EditorService implements Listener {
         StickerStore.setNameHidden(pdc, hidden);
     }
 
-    private static Sticker stickerAt(BlockFace facing, Session session, Optional<String> iconId,
+    private static final Changes NOTHING = new Changes(false, false, false);
+
+    private static Sticker stickerAt(BlockFace facing, SaveRequest request, Optional<String> iconId,
             Optional<String> visual) {
-        Anchor anchor = Anchor.of(Faces.toCore(facing), Faces.toCore(session.clickedFace));
-        return new Sticker(iconId, visual, anchor, session.rotation,
-                anchor == Anchor.SIDE ? Optional.of(Faces.toCore(session.clickedFace)) : Optional.empty());
+        Anchor anchor = Anchor.of(Faces.toCore(facing), Faces.toCore(request.clickedFace()));
+        return new Sticker(iconId, visual, anchor, request.rotation(),
+                anchor == Anchor.SIDE ? Optional.of(Faces.toCore(request.clickedFace())) : Optional.empty());
     }
 
     // ---- helpers -------------------------------------------------------------------------
+
+    /**
+     * Plugin disable: close every editor and rename screen so the menu can't turn into a
+     * plain chest once our listeners are gone, then release every lock. On Folia/Canvas a
+     * plugin is only disabled at shutdown and players are owned by their regions, so a
+     * player not owned by this thread is skipped; their client is disconnected anyway.
+     */
+    void shutdown() {
+        for (Session session : List.copyOf(sessions.values())) {
+            Player player = plugin.getServer().getPlayer(session.player);
+            clearRenameView(session);
+            session.closingOnPurpose = true;
+            end(session);
+            if (player != null && plugin.getServer().isOwnedByCurrentRegion(player.getLocation())) {
+                player.closeInventory();
+            }
+        }
+        sessions.clear();
+        locks.clear();
+    }
+
+    /**
+     * The same filter vanilla applies to anvil text ({@code StringUtil.filterText}): drops the
+     * formatting sign and control characters. Applied again here so a name can never carry
+     * formatting codes, whatever the server or client sends.
+     */
+    static String cleanRenameText(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        text.codePoints()
+                .filter(c -> c != '\u00a7' && c >= ' ' && c != 0x7f)
+                .forEach(out::appendCodePoint);
+        return out.toString();
+    }
+
+    /** False when color, icon and name editing are all switched off: the gesture is then vanilla. */
+    boolean editingEnabled() {
+        StickerConfig config = settings.config();
+        return config.colorEnabled() || config.iconEnabled() || config.nameEditEnabled();
+    }
+
+    // ---- the box going away during an edit -----------------------------------------------
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    void onBreak(BlockBreakEvent event) {
+        boxRemoved(event.getBlock());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    void onDestroy(BlockDestroyEvent event) {
+        boxRemoved(event.getBlock());
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    void onBlockExplode(BlockExplodeEvent event) {
+        event.blockList().forEach(this::boxRemoved);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    void onEntityExplode(EntityExplodeEvent event) {
+        event.blockList().forEach(this::boxRemoved);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    void onPistonExtend(BlockPistonExtendEvent event) {
+        event.getBlocks().forEach(this::boxRemoved);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    void onPistonRetract(BlockPistonRetractEvent event) {
+        event.getBlocks().forEach(this::boxRemoved);
+    }
+
+    /**
+     * The box's region thread. Marks the editing session's box as gone, so a pending or later
+     * Save refuses, and closes that player's editor with the reason (PRD §9). Commands such as
+     * {@code /setblock} fire no event; for those the position-and-color check at Save remains.
+     */
+    private void boxRemoved(Block block) {
+        UUID holder = locks.get(BlockKey.of(block));
+        Session session = holder == null ? null : sessions.get(holder);
+        if (session == null || !session.box.equals(BlockKey.of(block))) {
+            return;
+        }
+        session.boxGone.set(true);
+        Player player = plugin.getServer().getPlayer(holder);
+        if (player == null) {
+            return;
+        }
+        player.getScheduler().run(plugin, t -> {
+            if (sessions.get(player.getUniqueId()) != session || session.saving) {
+                return; // a running save reports the refusal itself
+            }
+            clearRenameView(session);
+            session.closingOnPurpose = true;
+            end(session);
+            player.closeInventory();
+            player.sendActionBar(Texts.text(player, NamedTextColor.RED, TextKeys.SAVE_BOX_GONE));
+        }, null);
+    }
 
     int openSessions() {
         return sessions.size();

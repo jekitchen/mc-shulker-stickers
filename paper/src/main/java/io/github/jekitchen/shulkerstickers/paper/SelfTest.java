@@ -272,8 +272,47 @@ final class SelfTest {
                         && td.getLocation().getZ() < nameOnly.getZ()
                         && net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
                                 .serialize(td.text()).endsWith("…"));
-        displays.remove(BlockKey.of(nameOnly));
-        summary();
+        // Plugin disable removes every display, including ones we no longer track.
+        displays.refresh(nameOnly);
+        var tracked = displays.displaysAt(nameOnly);
+        var stray = nameOnly.getWorld().spawn(nameOnly.getLocation().add(0.5, 1.5, 0.5), TextDisplay.class, d -> {
+            d.setPersistent(false);
+            d.getPersistentDataContainer().set(PaperKeys.DISPLAY, org.bukkit.persistence.PersistentDataType.BOOLEAN, true);
+        });
+        displays.removeAll();
+        // Folia/Canvas have no world-wide entity sweep; there the plugin is only disabled at
+        // shutdown and displays are never saved, so strays vanish with the server.
+        check("plugin disable removes tracked displays" + (DisplayManager.FOLIA ? "" : " and strays"),
+                !tracked.isEmpty() && tracked.stream().noneMatch(Entity::isValid)
+                        && (DisplayManager.FOLIA || !stray.isValid()) && displays.count() == 0);
+        stray.remove();
+        dispenserIntoOccupiedSpaceTest(origin);
+    }
+
+    /** A dispense that can't place (a box is already there) must not label the existing box. */
+    private void dispenserIntoOccupiedSpaceTest(Location origin) {
+        Block dispenserBlock = origin.clone().add(0, 0, 8).getBlock();
+        Directional data = (Directional) Material.DISPENSER.createBlockData();
+        data.setFacing(BlockFace.EAST);
+        dispenserBlock.setBlockData(data, false);
+        Block target = dispenserBlock.getRelative(BlockFace.EAST);
+        target.setType(Material.AIR, false);
+        Directional existing = (Directional) Material.BLUE_SHULKER_BOX.createBlockData();
+        existing.setFacing(BlockFace.UP);
+        target.setBlockData(existing, false);
+        ItemStack stack = new ItemStack(Material.SHULKER_BOX);
+        stack.editPersistentDataContainer(pdc -> StickerStore.write(pdc, ICON));
+        Dispenser dispenser = (Dispenser) dispenserBlock.getState();
+        dispenser.getSnapshotInventory().clear();
+        dispenser.getSnapshotInventory().addItem(stack);
+        dispenser.update(true, false);
+        ((Dispenser) dispenserBlock.getState()).dispense();
+        Bukkit.getRegionScheduler().runDelayed(plugin, origin, t -> {
+            boolean labelled = target.getState(false) instanceof ShulkerBox box
+                    && StickerStore.hasData(box.getPersistentDataContainer());
+            check("a dispense into an occupied space doesn't put the sticker on the box already there", !labelled);
+            summary();
+        }, 4);
     }
 
     private void placeDecoratedBox(Block block, BlockFace facing, Sticker sticker) {

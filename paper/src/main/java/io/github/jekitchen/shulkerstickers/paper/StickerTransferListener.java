@@ -63,9 +63,15 @@ final class StickerTransferListener implements Listener {
         }
         BlockFace out = dispenser.getFacing();
         Block target = event.getBlock().getRelative(out);
+        // Only a box this dispense places can get the sticker. If something already fills the
+        // space, the dispense can't place, and a box already there must not be labelled.
+        if (!target.isEmpty() && !target.isReplaceable()) {
+            return;
+        }
         ItemStack copy = stack.clone();
         plugin.getServer().getRegionScheduler().runDelayed(plugin, target.getLocation(), t -> {
             if (target.getState(false) instanceof ShulkerBox box
+                    && target.getType() == stack.getType()
                     && !StickerStore.hasData(box.getPersistentDataContainer())) {
                 // The side facing back toward the dispenser, or north if that isn't a side.
                 transfer(copy.getPersistentDataContainer(), target,

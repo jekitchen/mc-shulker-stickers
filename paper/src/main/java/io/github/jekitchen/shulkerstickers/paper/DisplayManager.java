@@ -12,6 +12,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Tag;
@@ -139,6 +140,47 @@ final class DisplayManager {
                 .filter(k -> k.world().equals(world) && k.chunkX() == chunkX && k.chunkZ() == chunkZ)
                 .toList()
                 .forEach(this::remove);
+    }
+
+    /**
+     * Plugin disable: removes every display we track, then sweeps loaded chunks for strays
+     * tagged as ours. Only entities owned by the current thread are touched. On Folia/Canvas
+     * a plugin is disabled only at shutdown, other regions' entities are skipped and the
+     * world-wide sweep is unavailable; that is safe because displays are never saved.
+     */
+    void removeAll() {
+        for (List<Entity> list : displays.values()) {
+            list.forEach(DisplayManager::removeIfOwned);
+        }
+        displays.clear();
+        if (FOLIA) {
+            return;
+        }
+        for (org.bukkit.World world : plugin.getServer().getWorlds()) {
+            for (Entity entity : world.getEntitiesByClass(Display.class)) {
+                if (entity.getPersistentDataContainer().has(PaperKeys.DISPLAY)) {
+                    removeIfOwned(entity);
+                }
+            }
+        }
+    }
+
+    private static void removeIfOwned(Entity entity) {
+        if (entity.isValid() && Bukkit.isOwnedByCurrentRegion(entity.getLocation())) {
+            entity.remove();
+        }
+    }
+
+    /** True on Folia and its forks (Canvas), which have no single main thread. */
+    static final boolean FOLIA = classExists("io.papermc.paper.threadedregions.RegionizedServer");
+
+    private static boolean classExists(String name) {
+        try {
+            Class.forName(name);
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
     }
 
     int count() {

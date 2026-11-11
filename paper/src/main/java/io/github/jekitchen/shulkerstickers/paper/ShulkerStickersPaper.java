@@ -8,13 +8,14 @@ public final class ShulkerStickersPaper extends JavaPlugin {
 
     private Settings settings;
     private DisplayManager displays;
+    private EditorService editor;
 
     @Override
     public void onEnable() {
         settings = new Settings(getDataFolder().toPath().resolve("config.json"), getLogger());
         settings.reload();
         displays = new DisplayManager(this, settings);
-        EditorService editor = new EditorService(this, settings, displays);
+        editor = new EditorService(this, settings, displays);
         var pm = getServer().getPluginManager();
         pm.registerEvents(new GestureListener(editor), this);
         pm.registerEvents(editor, this);
@@ -30,6 +31,20 @@ public final class ShulkerStickersPaper extends JavaPlugin {
             new SelfTest(this, settings, displays).schedule();
         }
         getLogger().info("Shulker Stickers enabled");
+    }
+
+    /**
+     * Without our listeners an open editor would become a plain chest of free shulker boxes,
+     * so every editor is closed first. Displays are removed too (they are never saved).
+     */
+    @Override
+    public void onDisable() {
+        if (editor != null) {
+            editor.shutdown();
+        }
+        if (displays != null) {
+            displays.removeAll();
+        }
     }
 
     DisplayManager displays() {

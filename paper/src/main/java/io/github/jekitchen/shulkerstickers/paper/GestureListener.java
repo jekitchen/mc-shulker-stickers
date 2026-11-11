@@ -43,8 +43,8 @@ final class GestureListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH)
     void onInteract(PlayerInteractEvent event) {
-        if (!isGesture(event.getPlayer(), event.getAction(), event.getClickedBlock())) {
-            return;
+        if (!editor.editingEnabled() || !isGesture(event.getPlayer(), event.getAction(), event.getClickedBlock())) {
+            return; // with every editing feature off, the box opens as in vanilla
         }
         if (event.useInteractedBlock() == Event.Result.DENY) {
             return; // a protection plugin said no
