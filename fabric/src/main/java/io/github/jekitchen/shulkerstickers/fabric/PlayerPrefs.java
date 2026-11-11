@@ -2,6 +2,7 @@ package io.github.jekitchen.shulkerstickers.fabric;
 
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import io.github.jekitchen.shulkerstickers.core.config.StickerConfig;
 import io.github.jekitchen.shulkerstickers.core.text.TextKeys;
 import net.fabricmc.fabric.api.attachment.v1.AttachmentRegistry;
 import net.fabricmc.fabric.api.attachment.v1.AttachmentType;
@@ -52,12 +53,17 @@ public final class PlayerPrefs {
 
     /** Shows the help message the first time a player places a shulker box, if turned on. */
     public static void onBoxPlaced(ServerPlayer player) {
+        onBoxPlaced(player, Settings.config());
+    }
+
+    public static void onBoxPlaced(ServerPlayer player, StickerConfig config) {
         Prefs prefs = get(player);
         if (prefs.helpSeen()) {
             return;
         }
-        player.setAttached(TYPE, new Prefs(true, prefs.gestureOff()));
-        if (Settings.config().firstPlaceMessage()) {
+        // Only marked as seen when it's actually shown, so turning the tip on later still shows it once.
+        if (config.firstPlaceMessage()) {
+            player.setAttached(TYPE, new Prefs(true, prefs.gestureOff()));
             player.sendSystemMessage(Text.tr(player, TextKeys.HELP_FIRST_PLACE));
         }
     }

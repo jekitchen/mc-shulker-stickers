@@ -121,3 +121,18 @@ Each fix has a GameTest in `ReviewFixGameTests` that failed before the fix. 60 G
 | Minor 11 Item costs took any matching item, including armor, off-hand, named or enchanted items | Only plain items from the main inventory and hotbar are counted and taken |
 
 Not changed: minor 8 (measure hide-while-open with spark) and minor 9 (two dispensers aimed at one spot).
+
+## Parity fixes (cross-platform review, 11 Nov 2026)
+
+Tests in `ParityGameTests` (each failed before its fix).
+
+- **#4 Color-only or no-op Save on an anvil-named box** now writes no sticker keys; the name stays on the lid. Sticker keys are written only when the icon or the name changed.
+- **#17 Feedback:** the editor plays `block.shulker_box.open` when it opens and `block.shulker_box.close` on Save and Cancel, only to the editing player, at volume 0.6 and pitch 1.2 (same as Paper). The gesture returns `SUCCESS_SERVER`, so the hand swing is also sent to the player (a vanilla client doesn't predict it).
+- **#18 First-run help** is marked as seen only when the message is actually shown, so turning `help.first_place_message` back on still shows it once (same as Paper).
+- **Icon orientation convention** (shared with Paper), in `StickerDisplays.faceRotation`:
+  - Every icon's front faces out of its face.
+  - Side faces: the image's top is world up.
+  - Top face: the image's top points the way the player was facing when the icon was applied (away from them), like an item in a floor item frame. `rot` is that direction's 2D data value: south 0, west 1, north 2, east 3 (unchanged).
+  - Bottom face: the image's top points in the same world direction as on the top face.
+  - The old top-face math pointed the image's top toward the player and disagreed with the bottom face; a test now checks the front and top vectors for all 6 faces × 4 rotations.
+  - **Assumption to check with a client:** an item display's model front faces +Z (the image reads correctly when viewed from +Z). If it's the other way round, every face is mirrored and the fix is one 180° turn about Y in `faceRotation`.

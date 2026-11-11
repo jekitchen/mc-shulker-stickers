@@ -219,19 +219,23 @@ public final class StickerDisplays {
     }
 
     /**
-     * Rotation that turns a display's front (+Z) to face out of {@code face}. On the top and bottom
-     * faces, {@code rot} turns the icon in quarter turns to match where the player was facing.
+     * Rotation that turns a display's front (+Z) to face out of {@code face}, with the image's top
+     * (+Y) pointing: world up on the four sides; on the top and bottom faces, the direction the
+     * player was facing ({@code rot} = that direction's 2D data value: south 0, west 1, north 2,
+     * east 3), so the icon reads upright like an item in a floor item frame. Shared with Paper.
      */
-    static Quaternionf faceRotation(Direction face, int rot) {
+    public static Quaternionf faceRotation(Direction face, int rot) {
         float quarter = (float) (Math.PI / 2);
         Quaternionf q = switch (face) {
             case SOUTH -> new Quaternionf();
             case NORTH -> new Quaternionf().rotationY(2 * quarter);
             case EAST -> new Quaternionf().rotationY(quarter);
             case WEST -> new Quaternionf().rotationY(-quarter);
-            case UP -> new Quaternionf().rotationX(-quarter);
-            case DOWN -> new Quaternionf().rotationX(quarter);
+            // Tip the front up (+Z -> +Y, top -> north), then turn about Y so the top points along rot.
+            case UP -> new Quaternionf().rotationY(2 * quarter - rot * quarter).rotateX(-quarter);
+            // Tip the front down (+Z -> -Y, top -> south), then turn about Y the same way.
+            case DOWN -> new Quaternionf().rotationY(-rot * quarter).rotateX(quarter);
         };
-        return q.rotateZ(rot * quarter);
+        return q;
     }
 }

@@ -65,7 +65,8 @@ public final class ShulkerStickersFabric implements ModInitializer {
                 EditorMenu.tryOpen(serverPlayer, serverLevel, hit.getBlockPos(), hit.getDirection());
             }
             // Consumed even when refused, so the off-hand block isn't placed instead (PRD §5.1).
-            return InteractionResult.SUCCESS;
+            // SUCCESS_SERVER also sends the hand swing to the player: a vanilla client didn't predict it.
+            return InteractionResult.SUCCESS_SERVER;
         });
     }
 

@@ -131,6 +131,7 @@ public final class EditorMenu extends ChestMenu {
             return false;
         }
         open(player, level, pos, newState(level, pos, clickedFace, config));
+        Feedback.opened(player);
         return true;
     }
 
@@ -249,6 +250,7 @@ public final class EditorMenu extends ChestMenu {
                         }
                     }
                     case CANCEL -> {
+                        Feedback.closed(player);
                         finish();
                         return;
                     }
@@ -363,7 +365,10 @@ public final class EditorMenu extends ChestMenu {
 
         // Data this version can't read is kept unless the player replaced or removed the icon.
         boolean keepUnreadable = state.unreadableSticker && !changes.icon();
-        if (!keepUnreadable && !sticker.equals(state.originalSticker)) {
+        // Only an icon or name change moves where things are drawn; a color-only Save
+        // leaves an anvil name on the lid with no sticker keys (matches Paper).
+        boolean placementChanged = changes.icon() || changes.name();
+        if (!keepUnreadable && placementChanged && !sticker.equals(state.originalSticker)) {
             StickerData.write(box, sticker);
         }
         if (changes.name()) {
@@ -380,6 +385,7 @@ public final class EditorMenu extends ChestMenu {
         Payments.charge(player, Costs.forChanges(
                 new Changes(changes.color() && colorApplied, changes.icon(), changes.name()), state.config));
         StickerDisplays.refresh(level, pos);
+        Feedback.closed(player);
         finish();
     }
 
