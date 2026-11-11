@@ -8,7 +8,7 @@ Branch: `spike/m0` (not pushed). Worktree: `.claude/worktrees/m0-spike`.
 
 | | Fabric | Paper / Folia / Canvas |
 |---|---|---|
-| Automated tests | 69 GameTests | 84 unit tests (MockBukkit) + 23-check real-server self-test on Paper 248, Folia 6 and Canvas 1010 |
+| Automated tests | 72 GameTests | 98 unit tests (MockBukkit) + 23-check real-server self-test on Paper 248, Folia 6 and Canvas 1010 |
 | Shared `core` | 97 unit tests | (same) |
 | Editor, recolor, icon, rename, Save/Cancel | Done | Done |
 | Data survives break / pistons / explosions / dispensers | Done | Done (built-in datapack) |
@@ -18,7 +18,7 @@ Branch: `spike/m0` (not pushed). Worktree: `.claude/worktrees/m0-spike`.
 
 `./gradlew build` runs all of it except the Paper self-test (`./gradlew :paper:runServer -Pselftest`, `:paper:runFolia -Pselftest`, `:paper:runCanvas -Pselftest`).
 
-Each platform had an independent code review, then a cross-platform parity review, then a review of the fixes. Every critical and important finding was fixed with a test that failed first.
+Each platform had an independent code review, then a cross-platform parity review, then a review of the fixes (which caught a free-edit hole in Paper payments, now fixed: payment is taken at Save and unapplied parts are refunded). Every critical and important finding was fixed with a test that failed first.
 
 ## Decisions for the owner
 
