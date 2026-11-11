@@ -13,6 +13,8 @@ bin/
 # Loom / Paper run directories
 run/
 runs/
+run-canvas/
+run-folia/
 .cache/
 
 # OS

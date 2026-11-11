@@ -1,5 +1,7 @@
 plugins {
     java
+    id("net.fabricmc.fabric-loom") version "1.19.4" apply false
+    id("xyz.jpenilla.run-paper") version "3.1.0" apply false
 }
 
 allprojects {
