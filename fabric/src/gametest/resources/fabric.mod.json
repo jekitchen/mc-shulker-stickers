@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "shulker_stickers_test",
+  "version": "0.0.0",
+  "name": "Shulker Stickers GameTests",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-gametest": [
+      "io.github.jekitchen.shulkerstickers.fabric.test.StickerDataGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.RecolorGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.EditorMenuGameTests"
+    ]
+  },
+  "depends": {
+    "shulker_stickers": "*",
+    "fabric-gametest-api-v1": "*"
+  }
+}
