@@ -161,3 +161,35 @@ Fixes for the Paper code review. New tests are in `SaveSafetyTest` (16 tests); t
 **Pushed back**
 - **"Keep the editor open when apply fails."** Apply-time failures are exactly PRD §9's cases (box broken, moved, changed or locked), and §9 says the editor closes. Pre-apply refusals (cost, blocked word, blocked icon) already keep it open.
 - **"Send a comparator update after recolor."** The Paper API has no analog-output-only update, and a neighbor update would fire observers (AC-16). A comparator's output depends only on the contents, which a recolor doesn't change, so the signal stays correct.
+
+## Parity review fixes (Paper now matches Fabric)
+
+From the cross-platform parity review, each with a test (`ParityTest`, `IconOrientationTest`, or a self-test check):
+
+- **#3 Remove icon on a named box** keeps the existing anchor, face and rot, so the name stays where it was drawn.
+- **#5 Removing the name from a name-only box** (editor or `clear name`) removes `v`, `anchor`, `rot` and `face` too. Data this version can't read is still never touched unless the icon changed.
+- **#6 `rot`** is stored only for content on the top or bottom face, and is 0 elsewhere. A new icon takes the player's facing when "Use off-hand item" is clicked; a name-only sticker takes it at Save.
+- **#8 Protection:** when a protection plugin cancels the gesture's right-click, the player now sees `deny.protected` on the action bar. Save re-checks game mode as well as permissions, lock and that the box is the same one.
+- **#9 Reload** redraws every loaded box with sticker data or a name, including ones that drew nothing before.
+- **#12 Unparseable `icon_visual`** draws nothing and keeps the data, instead of drawing the plain item.
+- **#13 A box locked during the edit:** Save is refused with `deny.locked` and the editor stays open, so the player can try again. This changes the earlier "pushed back" item above for this case only; a box that's gone still closes the editor.
+- **#15 A config file that can't be read on reload** keeps the current settings and reports a warning, instead of falling back to defaults.
+- **Canvas shutdown error:** removing displays at disable no longer asks for another region's entity location. It uses `Bukkit.isOwnedByCurrentRegion(entity)` and skips anything it can't safely touch, because displays are never saved. The self-test runs on Paper, Folia and Canvas end with no errors.
+
+## Orientation convention (both platforms)
+
+A display with no rotation shows its image facing +Z (south), with the image's top toward +Y. Paper now leaves the display's yaw and pitch at 0 and sets the transformation's left rotation (`IconOrientation`). The icon and name offsets move along the image's own up direction:
+
+| Face | Image faces | Image top points |
+|---|---|---|
+| North, south, east, west | out of the face | up |
+| Top | up | the way the player faced when the icon was applied: `rot` 0 = south, 1 = west, 2 = north, 3 = east |
+| Bottom | down | the same world direction as on the top face |
+
+`rot` is `floorMod(round(yaw / 90), 4)` with Minecraft yaw (0 = south, 90 = west). The top face reads like an item in a floor item frame seen by that player. `IconOrientationTest` checks the image normal and image up for all 6 faces and 4 rotations. The assumption that an unrotated display's image faces +Z still needs a check with a vanilla client.
+
+## Displays only near players (AC-8)
+
+See `perf-ac8.md`. Displays now exist only while a player is within view range; with no player near, the plugin's cost for 1,000 decorated boxes is about 0.04 ms/tick. The self-test forces "a player is nearby" through `DisplayManager.forceNearby(true)`, and adds a check that nothing is spawned when no player is near while the box stays tracked. A player in view of a whole 1,000-box wall still costs about 0.7 ms (2,000 entities); see `perf-ac8.md` for the options.
+
+Test counts after these fixes: 84 unit tests (MockBukkit and pure). The self-test passes 23/23 on Paper 248, Folia 6 and Canvas 1010.

@@ -57,8 +57,14 @@ final class IconItems {
             return Optional.empty();
         }
         Material material = Material.matchMaterial(id);
+        if (sticker.iconVisual().isEmpty()) {
+            return Optional.of(new ItemStack(material));
+        }
         Optional<JsonObject> components = sticker.iconVisual().flatMap(IconVisuals::parse);
-        if (components.isEmpty() || components.get().isEmpty()) {
+        if (components.isEmpty()) {
+            return Optional.empty(); // visual data we can't read: draw nothing, keep the data (PRD §6.1)
+        }
+        if (components.get().isEmpty()) {
             return Optional.of(new ItemStack(material));
         }
         try {

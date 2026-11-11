@@ -44,7 +44,7 @@ final class DisplayListener implements Listener {
         if (settings.config().hideWhileOpen() && event.getInventory().getHolder(false) instanceof ShulkerBox box) {
             Block block = box.getBlock();
             plugin.getServer().getRegionScheduler().execute(plugin, block.getLocation(),
-                    () -> displays.remove(BlockKey.of(block)));
+                    () -> displays.hideOpen(BlockKey.of(block)));
         }
     }
 
@@ -121,7 +121,7 @@ final class DisplayListener implements Listener {
 
     private void removeIfBox(Block block) {
         if (Tag.SHULKER_BOXES.isTagged(block.getType())) {
-            displays.remove(BlockKey.of(block));
+            displays.forget(BlockKey.of(block));
         }
     }
 }

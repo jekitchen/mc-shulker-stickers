@@ -39,6 +39,8 @@ final class PerfTest implements Listener {
     private static final boolean PLAIN = Boolean.getBoolean("shulkerstickers.perftest.plain");
     /** Variant: icons only, no names (one display entity per box). */
     private static final boolean NO_NAMES = Boolean.getBoolean("shulkerstickers.perftest.nonames");
+    /** Simulate a player within view range of every box; without it the run has no player at all. */
+    private static final boolean NEARBY = Boolean.getBoolean("shulkerstickers.perftest.nearby");
 
     private final Plugin plugin;
     private final DisplayManager displays;
@@ -50,6 +52,7 @@ final class PerfTest implements Listener {
     }
 
     void schedule() {
+        displays.forceNearby(NEARBY);
         Bukkit.getPluginManager().registerEvents(this, plugin);
         Bukkit.getGlobalRegionScheduler().runDelayed(plugin, t -> start(), 100);
     }
@@ -101,14 +104,20 @@ final class PerfTest implements Listener {
             }
         }
         long placed = System.nanoTime();
-        wall.forEach(displays::refresh);
+        if (!Boolean.getBoolean("shulkerstickers.perftest.notrack")) {
+            wall.forEach(displays::refresh);
+        }
         long drawn = System.nanoTime();
-        log("%s1,000 boxes placed in %.1f ms; displays spawned in %.1f ms (one-off, like a chunk load); tracked displays: %d",
-                PLAIN ? "CONTROL (plain boxes) " : "", (placed - start) / 1e6, (drawn - placed) / 1e6, displays.count());
+        log("%s%s1,000 boxes placed in %.1f ms; displays spawned in %.1f ms (one-off, like a chunk load); "
+                        + "tracked boxes: %d; display entities: %d",
+                PLAIN ? "CONTROL (plain boxes) " : "", NEARBY ? "PLAYER NEARBY (simulated) " : "NO PLAYER ",
+                (placed - start) / 1e6, (drawn - placed) / 1e6, displays.trackedCount(), displays.count());
 
         // Re-drawing everything is what a chunk reload or /shulkerstickers reload costs.
         long again = System.nanoTime();
-        wall.forEach(displays::refresh);
+        if (!Boolean.getBoolean("shulkerstickers.perftest.notrack")) {
+            wall.forEach(displays::refresh);
+        }
         log("re-drawing all 1,000 boxes: %.1f ms (one-off)", (System.nanoTime() - again) / 1e6);
 
         Bukkit.getGlobalRegionScheduler().runDelayed(plugin, t -> {
@@ -128,7 +137,10 @@ final class PerfTest implements Listener {
     /** Records {@link #SAMPLE} tick durations (Paper only), logs them, then runs {@code next}. */
     private void recordWindow(String label, Runnable next) {
         samples = new ArrayList<>();
+        long checksBefore = displays.checkNanos();
         Bukkit.getGlobalRegionScheduler().runDelayed(plugin, t -> {
+            log("%s: plugin proximity checks: %.4f ms per tick on average", label,
+                    (displays.checkNanos() - checksBefore) / 1e6 / SAMPLE);
             double[] ticks = samples.stream().mapToDouble(Double::doubleValue).toArray();
             samples = null;
             if (ticks.length == 0) {

@@ -4,6 +4,7 @@ import io.github.jekitchen.shulkerstickers.core.Anchor;
 import io.github.jekitchen.shulkerstickers.core.config.StickerConfig;
 import io.github.jekitchen.shulkerstickers.core.data.Sticker;
 import io.github.jekitchen.shulkerstickers.core.rules.NameRules;
+import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +17,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Tag;
+import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.ShulkerBox;
@@ -28,26 +30,72 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.util.Transformation;
-import org.joml.AxisAngle4f;
+import org.bukkit.util.Vector;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 /**
- * Draws a box's icon and name with real display entities that are never saved
- * (PRD §7.2). Every method that touches the world must run on the thread that owns
- * the box's region; callers schedule through {@link #refreshLater}.
+ * Draws a box's icon and name with real display entities that are never saved (PRD §7.2).
+ *
+ * <p>Displays exist only while a player is within view range (AC-8): 2,000 idle display
+ * entities cost about 0.6 ms/tick even with nobody watching. Every loaded box with sticker
+ * data or a name is tracked; once a second, a task on each such chunk's region spawns or
+ * removes displays as players come and go.
+ *
+ * <p>Every method that touches the world must run on the thread that owns the box's region;
+ * callers schedule through {@link #refreshLater}.
  */
-final class DisplayManager {
+class DisplayManager {
+
+    /** Where players are around a block; region-thread safe on Folia (looks only at nearby entities). */
+    @FunctionalInterface
+    interface Nearby {
+        /** Players within {@code horizontalRadius} across and {@code verticalRadius} up or down of the block centre. */
+        List<Vector> players(Block anchor, double horizontalRadius, double verticalRadius);
+    }
+
+    static final Nearby PLAYERS = (anchor, radius, vertical) -> anchor.getLocation().add(0.5, 0.5, 0.5)
+            .getNearbyPlayers(radius, vertical, radius).stream()
+            .map(p -> p.getLocation().toVector())
+            .toList();
 
     private static final float ICON_SCALE = 0.45f;
     private static final float TEXT_SCALE = 0.3f;
+    private static final long CHECK_TICKS = 20;
+
+    /** What a box has to show, if a player is close enough. */
+    record Parts(boolean icon, boolean name) {}
+
+    /** What is drawn now. {@code hiddenOpen}: hidden because the box is open (shown again on close). */
+    private record Drawn(List<Entity> entities, boolean icon, boolean name, boolean hiddenOpen) {}
+
+    private record ChunkKey(UUID world, int x, int z) {
+        static ChunkKey of(BlockKey key) {
+            return new ChunkKey(key.world(), key.chunkX(), key.chunkZ());
+        }
+    }
 
     private final Plugin plugin;
     private final Settings settings;
-    private final Map<BlockKey, List<Entity>> displays = new ConcurrentHashMap<>();
+    private final Nearby nearby;
+    private final Map<BlockKey, Drawn> displays = new ConcurrentHashMap<>();
+    private final Map<BlockKey, Parts> tracked = new ConcurrentHashMap<>();
+    private final Map<ChunkKey, ScheduledTask> checks = new ConcurrentHashMap<>();
+    /** Self-test and perf-test hook: treat every box as having a player nearby. */
+    private volatile boolean forceNearby;
 
     DisplayManager(Plugin plugin, Settings settings) {
+        this(plugin, settings, PLAYERS);
+    }
+
+    DisplayManager(Plugin plugin, Settings settings, Nearby nearby) {
         this.plugin = plugin;
         this.settings = settings;
+        this.nearby = nearby;
+    }
+
+    void forceNearby(boolean force) {
+        forceNearby = force;
     }
 
     /** Schedules {@link #refresh} on the box's region thread. */
@@ -65,81 +113,218 @@ final class DisplayManager {
     }
 
     void removeLater(Block block) {
-        plugin.getServer().getRegionScheduler().execute(plugin, block.getLocation(), () -> remove(BlockKey.of(block)));
+        plugin.getServer().getRegionScheduler().execute(plugin, block.getLocation(), () -> forget(BlockKey.of(block)));
     }
 
-    /** Re-creates every display this manager knows about (after a config reload). */
+    /** Redraws every loaded box with sticker data or a name (after a config reload). */
     void refreshAllLater() {
-        displays.keySet().forEach(key -> refreshLater(key, 1));
+        java.util.Set<BlockKey> keys = new java.util.HashSet<>(tracked.keySet());
+        keys.addAll(displays.keySet());
+        keys.forEach(key -> refreshLater(key, 1));
     }
 
-    /** Region thread only. Re-creates the displays from the block's current data. */
+    boolean isTracked(Block block) {
+        return tracked.containsKey(BlockKey.of(block));
+    }
+
+    /** Region thread only. Re-reads the box and draws what is in range of a player. */
     void refresh(Block block) {
         BlockKey key = BlockKey.of(block);
-        remove(key);
+        removeEntities(key);
         if (!Tag.SHULKER_BOXES.isTagged(block.getType()) || !(block.getState(false) instanceof ShulkerBox box)) {
+            tracked.remove(key);
+            return;
+        }
+        var pdc = box.getPersistentDataContainer();
+        if (!StickerStore.hasData(pdc) && box.customName() == null) {
+            tracked.remove(key);
             return;
         }
         StickerConfig config = settings.config();
-        if (config.hideWhileOpen() && !box.getInventory().getViewers().isEmpty()) {
-            return; // shown again when the last viewer closes the box
-        }
-        Optional<Sticker> sticker = StickerStore.read(box.getPersistentDataContainer());
+        Optional<Sticker> sticker = StickerStore.read(pdc);
         Optional<ItemStack> icon = config.iconEnabled()
                 ? sticker.flatMap(s -> IconItems.render(s, config))
                 : Optional.empty();
         Optional<String> name = Optional.ofNullable(box.customName())
                 .filter(n -> config.nameDisplayEnabled())
-                .filter(n -> !StickerStore.isNameHidden(box.getPersistentDataContainer()))
+                .filter(n -> !StickerStore.isNameHidden(pdc))
                 .map(n -> PlainTextComponentSerializer.plainText().serialize(n))
                 .filter(n -> !n.isBlank());
-        if (icon.isEmpty() && name.isEmpty()) {
+        tracked.put(key, new Parts(icon.isPresent(), name.isPresent()));
+        ensureCheck(key);
+        if (config.hideWhileOpen() && !box.getInventory().getViewers().isEmpty()) {
+            displays.put(key, new Drawn(List.of(), false, false, true));
+            return; // shown again when the last viewer closes the box
+        }
+        List<Vector> players = playersAround(block, config);
+        boolean drawIcon = icon.isPresent() && inRange(block, players, config.iconViewRange());
+        boolean drawName = name.isPresent() && inRange(block, players, config.nameViewRange());
+        if (!drawIcon && !drawName) {
             return;
         }
         BlockFace facing = ((Directional) block.getBlockData()).getFacing();
         // A name without a stored anchor (e.g. from a real anvil) goes on the lid.
         Anchor anchor = sticker.map(Sticker::anchor).orElse(Anchor.LID);
         BlockFace face = Faces.iconFace(anchor, facing, sticker.flatMap(Sticker::face));
-        int rotation = sticker.map(Sticker::rot).orElse(0);
+        Quaternionf rotation = IconOrientation.rotation(Faces.toCore(face), sticker.map(Sticker::rot).orElse(0));
+        Location at = block.getLocation().add(0.5, 0.5, 0.5).add(face.getDirection().multiply(0.51));
 
         List<Entity> spawned = new ArrayList<>(2);
-        Location at = faceLocation(block, face, rotation);
-        icon.ifPresent(stack -> spawned.add(block.getWorld().spawn(at, ItemDisplay.class, display -> {
-            prepare(display, config);
-            display.setItemStack(stack);
-            display.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
-            display.setViewRange(viewRange(config.iconViewRange()));
-            display.setTransformation(transform(name.isEmpty() ? 0f : 0.08f, ICON_SCALE));
-        })));
-        name.ifPresent(n -> {
-            String text = NameRules.displayText(n, config.nameMaxDisplayChars());
-            float offset = icon.isPresent() ? -0.3f : -0.05f;
+        if (drawIcon) {
+            // The icon sits a little higher when the box also has a name, so both fit.
+            float up = name.isPresent() ? 0.08f : 0f;
+            spawned.add(block.getWorld().spawn(at, ItemDisplay.class, display -> {
+                prepare(display, config);
+                display.setItemStack(icon.get());
+                display.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
+                display.setViewRange(viewRange(config.iconViewRange()));
+                display.setTransformation(transform(rotation, up, ICON_SCALE));
+            }));
+        }
+        if (drawName) {
+            String text = NameRules.displayText(name.get(), config.nameMaxDisplayChars());
+            float up = icon.isPresent() ? -0.3f : -0.05f;
             spawned.add(block.getWorld().spawn(at, TextDisplay.class, display -> {
                 prepare(display, config);
                 display.text(Component.text(text));
                 display.setShadowed(true);
                 display.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
                 display.setViewRange(viewRange(config.nameViewRange()));
-                display.setTransformation(transform(offset, TEXT_SCALE));
+                display.setTransformation(transform(rotation, up, TEXT_SCALE));
             }));
-        });
-        displays.put(key, spawned);
+        }
+        displays.put(key, new Drawn(spawned, drawIcon, drawName, false));
     }
 
-    /** Region thread only. */
+    private List<Vector> playersAround(Block block, StickerConfig config) {
+        if (forceNearby) {
+            return List.of(block.getLocation().add(0.5, 0.5, 0.5).toVector());
+        }
+        int range = Math.max(config.iconViewRange(), config.nameViewRange());
+        return nearby.players(block, range, range);
+    }
+
+    private static boolean inRange(Block block, List<Vector> players, int range) {
+        Vector center = block.getLocation().add(0.5, 0.5, 0.5).toVector();
+        double max = (double) range * range;
+        for (Vector p : players) {
+            if (p.distanceSquared(center) <= max) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** One repeating check per chunk with tracked boxes, on that chunk's region. */
+    private void ensureCheck(BlockKey key) {
+        ChunkKey chunk = ChunkKey.of(key);
+        checks.computeIfAbsent(chunk, c -> {
+            World world = Bukkit.getWorld(c.world());
+            if (world == null) {
+                return null;
+            }
+            return plugin.getServer().getRegionScheduler().runAtFixedRate(plugin, world, c.x(), c.z(),
+                    task -> check(c, task), CHECK_TICKS, CHECK_TICKS);
+        });
+    }
+
+    /** Region thread: spawns or removes displays as players come within or leave view range. */
+    private void check(ChunkKey chunk, ScheduledTask task) {
+        long start = System.nanoTime();
+        try {
+            checkChunk(chunk, task);
+        } finally {
+            checkNanos.addAndGet(System.nanoTime() - start);
+        }
+    }
+
+    /** Total time spent in the once-a-second proximity checks (read by the perf test). */
+    private final java.util.concurrent.atomic.AtomicLong checkNanos = new java.util.concurrent.atomic.AtomicLong();
+
+    long checkNanos() {
+        return checkNanos.get();
+    }
+
+    private void checkChunk(ChunkKey chunk, ScheduledTask task) {
+        List<BlockKey> keys = tracked.keySet().stream()
+                .filter(k -> k.world().equals(chunk.world()) && k.chunkX() == chunk.x() && k.chunkZ() == chunk.z())
+                .toList();
+        World world = Bukkit.getWorld(chunk.world());
+        if (keys.isEmpty() || world == null || !world.isChunkLoaded(chunk.x(), chunk.z())) {
+            checks.remove(chunk, task);
+            cancelQuietly(task);
+            return;
+        }
+        StickerConfig config = settings.config();
+        int maxRange = Math.max(config.iconViewRange(), config.nameViewRange());
+        int minY = keys.stream().mapToInt(BlockKey::y).min().orElseThrow();
+        int maxY = keys.stream().mapToInt(BlockKey::y).max().orElseThrow();
+        Block center = world.getBlockAt((chunk.x() << 4) + 8, (minY + maxY) / 2, (chunk.z() << 4) + 8);
+        // One player lookup per chunk, just big enough to cover every tracked box in it.
+        List<Vector> players = forceNearby ? null
+                : nearby.players(center, maxRange + 12, maxRange + (maxY - minY) / 2.0 + 1);
+        for (BlockKey key : keys) {
+            Parts parts = tracked.get(key);
+            Drawn drawn = displays.get(key);
+            if (parts == null || (drawn != null && drawn.hiddenOpen())) {
+                continue;
+            }
+            Block block = world.getBlockAt(key.x(), key.y(), key.z());
+            boolean wantIcon = parts.icon() && (players == null || inRange(block, players, config.iconViewRange()));
+            boolean wantName = parts.name() && (players == null || inRange(block, players, config.nameViewRange()));
+            boolean hasIcon = drawn != null && drawn.icon();
+            boolean hasName = drawn != null && drawn.name();
+            if (wantIcon != hasIcon || wantName != hasName) {
+                refresh(block);
+            }
+        }
+    }
+
+    private static void cancelQuietly(ScheduledTask task) {
+        try {
+            task.cancel();
+        } catch (UnsupportedOperationException e) {
+            // MockBukkit doesn't implement cancel; real servers do.
+        }
+    }
+
+    /** Region thread only. Removes the box's displays; it stays tracked. */
     void remove(BlockKey key) {
-        List<Entity> old = displays.remove(key);
+        removeEntities(key);
+    }
+
+    /** Region thread only. The box was opened: hide its displays until it closes (PRD §5.5). */
+    void hideOpen(BlockKey key) {
+        removeEntities(key);
+        if (tracked.containsKey(key)) {
+            displays.put(key, new Drawn(List.of(), false, false, true));
+        }
+    }
+
+    /** Region thread only. Removes the displays and stops tracking the box (it was broken or moved). */
+    void forget(BlockKey key) {
+        removeEntities(key);
+        tracked.remove(key);
+    }
+
+    private void removeEntities(BlockKey key) {
+        Drawn old = displays.remove(key);
         if (old != null) {
-            old.forEach(Entity::remove);
+            old.entities().forEach(Entity::remove);
         }
     }
 
     /** Region thread only. Forgets and removes every display in a chunk. */
     void removeChunk(UUID world, int chunkX, int chunkZ) {
-        displays.keySet().stream()
+        java.util.Set<BlockKey> keys = new java.util.HashSet<>(displays.keySet());
+        keys.addAll(tracked.keySet());
+        keys.stream()
                 .filter(k -> k.world().equals(world) && k.chunkX() == chunkX && k.chunkZ() == chunkZ)
-                .toList()
-                .forEach(this::remove);
+                .forEach(this::forget);
+        ScheduledTask task = checks.remove(new ChunkKey(world, chunkX, chunkZ));
+        if (task != null) {
+            cancelQuietly(task);
+        }
     }
 
     /**
@@ -149,14 +334,17 @@ final class DisplayManager {
      * world-wide sweep is unavailable; that is safe because displays are never saved.
      */
     void removeAll() {
-        for (List<Entity> list : displays.values()) {
-            list.forEach(DisplayManager::removeIfOwned);
+        checks.values().forEach(DisplayManager::cancelQuietly);
+        checks.clear();
+        for (Drawn drawn : displays.values()) {
+            drawn.entities().forEach(DisplayManager::removeIfOwned);
         }
         displays.clear();
+        tracked.clear();
         if (FOLIA) {
             return;
         }
-        for (org.bukkit.World world : plugin.getServer().getWorlds()) {
+        for (World world : plugin.getServer().getWorlds()) {
             for (Entity entity : world.getEntitiesByClass(Display.class)) {
                 if (entity.getPersistentDataContainer().has(PaperKeys.DISPLAY)) {
                     removeIfOwned(entity);
@@ -165,9 +353,18 @@ final class DisplayManager {
         }
     }
 
+    /**
+     * Removes an entity only if this thread owns it. Asking about an entity owned by another
+     * region can itself fail on Folia while the server shuts down, so any failure just skips
+     * it: displays are never saved, so a skipped one disappears with the server.
+     */
     private static void removeIfOwned(Entity entity) {
-        if (entity.isValid() && Bukkit.isOwnedByCurrentRegion(entity.getLocation())) {
-            entity.remove();
+        try {
+            if (Bukkit.isOwnedByCurrentRegion(entity) && entity.isValid()) {
+                entity.remove();
+            }
+        } catch (RuntimeException e) {
+            // Not ours to touch at this point; see above.
         }
     }
 
@@ -184,11 +381,16 @@ final class DisplayManager {
     }
 
     int count() {
-        return displays.values().stream().mapToInt(List::size).sum();
+        return displays.values().stream().mapToInt(d -> d.entities().size()).sum();
+    }
+
+    int trackedCount() {
+        return tracked.size();
     }
 
     List<Entity> displaysAt(Block block) {
-        return displays.getOrDefault(BlockKey.of(block), List.of());
+        Drawn drawn = displays.get(BlockKey.of(block));
+        return drawn == null ? List.of() : drawn.entities();
     }
 
     private void prepare(Display display, StickerConfig config) {
@@ -206,31 +408,12 @@ final class DisplayManager {
     }
 
     /**
-     * A point just outside the face (so the display takes its light from the open space in
-     * front, PRD §5.5), rotated so the display's front points out of the face. Top and
-     * bottom faces also turn by {@code rotation} quarter turns.
+     * The display stands just outside the face with no yaw or pitch; {@link IconOrientation}
+     * turns it, and {@code up} moves it along the image's own up direction.
      */
-    private static Location faceLocation(Block block, BlockFace face, int rotation) {
-        Location at = block.getLocation().add(0.5, 0.5, 0.5).add(face.getDirection().multiply(0.51));
-        float yaw = switch (face) {
-            case SOUTH -> 0f;
-            case WEST -> 90f;
-            case NORTH -> 180f;
-            case EAST -> -90f;
-            default -> rotation * 90f;
-        };
-        float pitch = switch (face) {
-            case UP -> -90f;
-            case DOWN -> 90f;
-            default -> 0f;
-        };
-        at.setYaw(yaw);
-        at.setPitch(pitch);
-        return at;
-    }
-
-    private static Transformation transform(float up, float scale) {
-        return new Transformation(new Vector3f(0f, up, 0f), new AxisAngle4f(),
-                new Vector3f(scale, scale, scale), new AxisAngle4f());
+    private static Transformation transform(Quaternionf rotation, float up, float scale) {
+        Vector3f offset = rotation.transform(new Vector3f(0f, up, 0f));
+        return new Transformation(offset, new Quaternionf(rotation),
+                new Vector3f(scale, scale, scale), new Quaternionf());
     }
 }

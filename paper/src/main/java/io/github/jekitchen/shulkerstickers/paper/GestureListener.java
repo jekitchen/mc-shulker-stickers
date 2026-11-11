@@ -47,7 +47,13 @@ final class GestureListener implements Listener {
             return; // with every editing feature off, the box opens as in vanilla
         }
         if (event.useInteractedBlock() == Event.Result.DENY) {
-            return; // a protection plugin said no
+            // A protection plugin said no; say why once (the off-hand packet that follows is quiet).
+            if (event.getHand() == EquipmentSlot.HAND) {
+                event.getPlayer().sendActionBar(Texts.text(event.getPlayer(),
+                        net.kyori.adventure.text.format.NamedTextColor.RED,
+                        io.github.jekitchen.shulkerstickers.core.text.TextKeys.DENY_PROTECTED));
+            }
+            return;
         }
         // The client sends a second, off-hand packet when the main hand does nothing.
         // Cancelling it stops the off-hand block being placed against the box (PRD §5.1).

@@ -55,9 +55,26 @@ Polymer's displays aren't entities on the server, so they add no per-tick cost. 
 - **Our cost:** about **+0.66 ms** by the tick-end event, or **+0.87 ms** by region MSPT. **Over budget**, the same as Paper.
 - Folia uses the same entity code as Canvas, so it wasn't run separately.
 
+## Update: Paper/Canvas displays only near players (built)
+
+Paper and Canvas now spawn a box's icon only while a player is within `icon.view_range`, and its name only within `name.view_range`. Every loaded box with sticker data or a name is still tracked. Once a second, one task per chunk with tracked boxes runs on that chunk's region. It does one nearby-player lookup sized to cover the chunk's boxes, then spawns or removes displays when that changes what should be shown. Hide-while-open still applies.
+
+Re-measured 11 Nov 2026 with the same wall ("after" window, 200 ticks). `-Pnearby` simulates a player within range of every box, which is the worst case: all 2,000 displays are needed.
+
+| Scene | Paper 248: mean tick | Canvas 1010: mean tick | Plugin's proximity checks |
+|---|---|---|---|
+| 1,000 plain boxes (control) | 0.385–0.428 ms | 0.330 ms | 0.01 ms |
+| 1,000 decorated boxes, **no player near** | 0.587–0.631 ms | 0.350 ms | 0.037–0.045 ms |
+| 1,000 decorated boxes, untracked by the plugin (diagnostic, `-Pnotrack`) | 0.588 ms | — | — |
+| 1,000 decorated boxes, **player near all of them** (simulated) | 1.135 ms | 1.092 ms | 0.041 ms |
+
+- **No player near: our cost is about 0.03–0.04 ms/tick, under budget on both.** On Paper the wall still adds about 0.2 ms over plain boxes. The untracked run shows the same 0.2 ms, so it's the server's own cost for boxes that carry data (most likely Paper's chunk saving), not the plugin's. Canvas doesn't show it.
+- **A player in view of all 1,000 boxes: still about 0.7 ms**, the cost of 2,000 display entities. That is a real 1,000-box wall in front of a player, so AC-8 isn't met for that case on Paper/Canvas. Options 2 and 3 below remain for the owner. The `name.view_range` default (16) already means a player at a big wall sees only part of the names.
+- **One-off costs:** spawning 2,000 displays took 90–96 ms, now when a player arrives rather than at chunk load.
+
 ## What would bring Paper/Canvas under budget
 
-1. **Spawn displays only near players (recommended).** Draw a box's icon only while a player is within `icon.view_range` (32), and its name only within `name.view_range` (16).
+1. **Spawn displays only near players (recommended; now built, see above).** Draw a box's icon only while a player is within `icon.view_range` (32), and its name only within `name.view_range` (16).
    - Storage areas with no one nearby would cost nothing.
    - A player in front of the 50 × 20 wall would still see most icons but only about half the names. From the numbers above that's roughly 0.44 + 0.12 ≈ 0.56 ms, close to budget, and shorter ranges help further.
    - **Effort:** proximity checks have to run on the region thread for each player (Folia), with hysteresis to avoid churn.

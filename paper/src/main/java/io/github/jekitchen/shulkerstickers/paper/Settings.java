@@ -36,17 +36,17 @@ final class Settings {
     /** Loads the file (creating it with defaults if missing). Returns the warnings, which are also logged. */
     List<String> reload() {
         List<String> warnings = new ArrayList<>();
-        StickerConfig config = StickerConfig.DEFAULTS;
         try {
             ConfigLoader.Result result = ConfigLoader.loadOrCreate(file);
-            config = result.config();
+            StickerConfig config = result.config();
             warnings.addAll(result.warnings());
+            BlockedWords blocked = BlockedWords.compile(config.nameBlockedWords());
+            warnings.addAll(blocked.warnings());
+            snapshot = new Snapshot(config, blocked);
         } catch (IOException e) {
-            warnings.add("Could not read " + file + " (" + e.getMessage() + "); using defaults");
+            // Same as the Fabric build: a file we can't read leaves the current settings in place.
+            warnings.add("Could not read " + file + " (" + e.getMessage() + "); keeping the current settings");
         }
-        BlockedWords blocked = BlockedWords.compile(config.nameBlockedWords());
-        warnings.addAll(blocked.warnings());
-        snapshot = new Snapshot(config, blocked);
         warnings.forEach(w -> logger.warning("Config: " + w));
         return warnings;
     }

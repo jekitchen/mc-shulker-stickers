@@ -99,5 +99,13 @@ if (providers.gradleProperty("perftest").isPresent) {
         if (providers.gradleProperty("nonames").isPresent) {
             jvmArgs("-Dshulkerstickers.perftest.nonames=true")
         }
+        // Simulate a player next to every box (displays exist only near players).
+        if (providers.gradleProperty("nearby").isPresent) {
+            jvmArgs("-Dshulkerstickers.perftest.nearby=true")
+        }
+        // Diagnostic: decorated boxes the plugin never tracks (separates data cost from ours).
+        if (providers.gradleProperty("notrack").isPresent) {
+            jvmArgs("-Dshulkerstickers.perftest.notrack=true")
+        }
     }
 }

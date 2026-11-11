@@ -74,7 +74,8 @@ final class EditorService implements Listener {
         final UUID player;
         final BlockKey box;
         final BlockFace clickedFace;
-        final int rotation;
+        /** Player's facing quadrant when "Use off-hand item" was clicked (top/bottom icons turn by it). */
+        int iconRotation;
         final EditorSession editor;
         boolean renaming;
         /** Set while we close the menu on purpose (Save, or switching screens). */
@@ -90,11 +91,10 @@ final class EditorService implements Listener {
          */
         final AtomicBoolean boxGone = new AtomicBoolean();
 
-        Session(UUID player, BlockKey box, BlockFace clickedFace, int rotation, EditorSession editor) {
+        Session(UUID player, BlockKey box, BlockFace clickedFace, EditorSession editor) {
             this.player = player;
             this.box = box;
             this.clickedFace = clickedFace;
-            this.rotation = rotation;
             this.editor = editor;
         }
     }
@@ -144,10 +144,9 @@ final class EditorService implements Listener {
         Optional<Sticker> sticker = StickerStore.read(box.getPersistentDataContainer());
         Optional<String> name = Optional.ofNullable(box.customName())
                 .map(c -> PlainTextComponentSerializer.plainText().serialize(c));
-        int rotation = Math.floorMod(Math.round(player.getYaw() / 90f), 4);
         BoxState original = new BoxState(color, sticker.flatMap(Sticker::iconId),
                 sticker.flatMap(Sticker::iconVisual), name);
-        Session session = new Session(player.getUniqueId(), key, clickedFace, rotation, new EditorSession(original));
+        Session session = new Session(player.getUniqueId(), key, clickedFace, new EditorSession(original));
         sessions.put(player.getUniqueId(), session);
         showEditor(player, session);
         if (player.getOpenInventory().getTopInventory() != session.editorInventory) {
@@ -343,6 +342,7 @@ final class EditorService implements Listener {
             return;
         }
         session.editor.stageIcon(captured.id(), captured.visual());
+        session.iconRotation = IconOrientation.quadrant(player.getYaw());
     }
 
     // ---- rename screen -------------------------------------------------------------------
@@ -550,8 +550,13 @@ final class EditorService implements Listener {
         session.saving = true;
         StickerConfig config = settings.config();
         boolean hideName = !player.hasPermission(Permissions.NAME_DISPLAY);
+        // A new icon turns the way the player faced when it was taken; a name-only sticker
+        // turns the way they face now. Only the top and bottom faces use it (see stickerAt).
+        int rotation = changes.icon() && session.editor.staged().iconId().isPresent()
+                ? session.iconRotation
+                : IconOrientation.quadrant(player.getYaw());
         SaveRequest request = new SaveRequest(session.editor.original(), session.editor.staged(), changes,
-                session.clickedFace, session.rotation, hideName, session.boxGone);
+                session.clickedFace, rotation, hideName, session.boxGone);
         plugin.getServer().getRegionScheduler().execute(plugin, location, () -> {
             SaveResult result = apply(location.getBlock(), request);
             // If the player has logged out by now, nothing is charged (see notes).
@@ -563,6 +568,10 @@ final class EditorService implements Listener {
     private Optional<String> checkSave(Player player, Session session, Changes changes) {
         StickerConfig config = settings.config();
         BoxState staged = session.editor.staged();
+        if (player.getGameMode() == org.bukkit.GameMode.SPECTATOR
+                || (player.getGameMode() == org.bukkit.GameMode.ADVENTURE && !config.allowAdventureMode())) {
+            return Optional.of(Texts.plain(player, TextKeys.DENY_ADVENTURE));
+        }
         if ((changes.color() && !colorAllowed(player)) || (changes.icon() && !iconAllowed(player))
                 || (changes.name() && !nameAllowed(player))) {
             return Optional.of(Texts.plain(player, TextKeys.DENY_PERMISSION));
@@ -583,6 +592,15 @@ final class EditorService implements Listener {
 
     /** Player thread. Charges only for the parts that were applied, at the prices when Save was pressed. */
     private void finishSave(Player player, Session session, StickerConfig config, SaveResult result) {
+        if (result.keepOpen()) {
+            // e.g. the box was locked meanwhile: say why and let the player try again (PRD §6.3 step 1).
+            session.saving = false;
+            player.sendActionBar(Texts.text(player, NamedTextColor.RED, result.messageKey()));
+            if (editorSession(player.getUniqueId(), player.getOpenInventory()) == session) {
+                render(session.editorInventory, session, player);
+            }
+            return;
+        }
         session.closingOnPurpose = true;
         end(session);
         player.closeInventory();
@@ -608,7 +626,11 @@ final class EditorService implements Listener {
             boolean hideName, AtomicBoolean boxGone) {}
 
     /** {@code applied} is what actually changed on the box (a refused color is left out). */
-    record SaveResult(boolean saved, String messageKey, Changes applied) {}
+    record SaveResult(boolean saved, String messageKey, Changes applied, boolean keepOpen) {
+        SaveResult(boolean saved, String messageKey, Changes applied) {
+            this(saved, messageKey, applied, false);
+        }
+    }
 
     /**
      * Region thread only. Refuses if the box was broken, moved, recolored or locked since
@@ -627,7 +649,7 @@ final class EditorService implements Listener {
             return new SaveResult(false, TextKeys.SAVE_BOX_GONE, NOTHING);
         }
         if (box instanceof Lockable lockable && lockable.isLocked()) {
-            return new SaveResult(false, TextKeys.DENY_LOCKED, NOTHING);
+            return new SaveResult(false, TextKeys.DENY_LOCKED, NOTHING, true);
         }
         BoxState staged = request.staged();
         boolean inUse = changes.color() && !box.getInventory().getViewers().isEmpty();
@@ -638,16 +660,7 @@ final class EditorService implements Listener {
             box.customName(staged.name().map(Component::text).orElse(null));
             StickerStore.setNameHidden(pdc, staged.name().isPresent() && hideName);
         }
-        // A name-only save gives a box with no sticker data a face for the name. Existing
-        // data, even data this version can't read, is only replaced when the icon changed.
-        if (changes.icon() || (changes.name() && staged.name().isPresent() && !StickerStore.hasData(pdc))) {
-            if (staged.iconId().isPresent() || staged.name().isPresent()) {
-                // A name-only sticker records the clicked face so the name has a face to go on.
-                StickerStore.write(pdc, stickerAt(facing, request, staged.iconId(), staged.iconVisual()));
-            } else {
-                clearStickerKeys(pdc);
-            }
-        }
+        writeSticker(pdc, facing, request);
         box.update(true, false);
         if (changes.color() && !inUse) {
             BoxRecolorer.recolor(block, staged.color());
@@ -655,6 +668,42 @@ final class EditorService implements Listener {
         displays.refresh(block);
         Changes applied = new Changes(changes.color() && !inUse, changes.icon(), changes.name());
         return new SaveResult(true, inUse ? TextKeys.SAVE_BOX_IN_USE : null, applied);
+    }
+
+    /**
+     * Region thread. Which sticker keys a Save writes (same rules as the Fabric build):
+     * <ul>
+     *   <li>a new icon: a sticker on the clicked face;</li>
+     *   <li>icon removed from a named box: the name stays where it was drawn;</li>
+     *   <li>icon removed, no name: the sticker keys go;</li>
+     *   <li>a name given to a box with no sticker keys: a name-only sticker on the clicked face;</li>
+     *   <li>the name removed from a name-only box: its sticker keys go.</li>
+     * </ul>
+     * Data this version can't read is only replaced when the player changed the icon.
+     */
+    private static void writeSticker(org.bukkit.persistence.PersistentDataContainer pdc, BlockFace facing,
+            SaveRequest request) {
+        Changes changes = request.changes();
+        BoxState staged = request.staged();
+        Optional<Sticker> current = StickerStore.read(pdc);
+        boolean hasStickerKeys = !StickerStore.raw(pdc).isEmpty();
+        if (changes.icon()) {
+            if (staged.iconId().isPresent()) {
+                StickerStore.write(pdc, stickerAt(facing, request, staged.iconId(), staged.iconVisual()));
+            } else if (staged.name().isPresent()) {
+                StickerStore.write(pdc, current
+                        .map(s -> new Sticker(Optional.empty(), Optional.empty(), s.anchor(), s.rot(), s.face()))
+                        .orElseGet(() -> stickerAt(facing, request, Optional.empty(), Optional.empty())));
+            } else {
+                clearStickerKeys(pdc);
+            }
+        } else if (changes.name()) {
+            if (staged.name().isPresent() && !hasStickerKeys) {
+                StickerStore.write(pdc, stickerAt(facing, request, Optional.empty(), Optional.empty()));
+            } else if (staged.name().isEmpty() && current.isPresent() && !current.get().hasIcon()) {
+                clearStickerKeys(pdc);
+            }
+        }
     }
 
     private static void clearStickerKeys(org.bukkit.persistence.PersistentDataContainer pdc) {
@@ -668,7 +717,9 @@ final class EditorService implements Listener {
     private static Sticker stickerAt(BlockFace facing, SaveRequest request, Optional<String> iconId,
             Optional<String> visual) {
         Anchor anchor = Anchor.of(Faces.toCore(facing), Faces.toCore(request.clickedFace()));
-        return new Sticker(iconId, visual, anchor, request.rotation(),
+        // rot only turns content on the top and bottom faces (PRD §6.1); elsewhere it is 0.
+        boolean topOrBottom = request.clickedFace() == BlockFace.UP || request.clickedFace() == BlockFace.DOWN;
+        return new Sticker(iconId, visual, anchor, topOrBottom ? request.rotation() : 0,
                 anchor == Anchor.SIDE ? Optional.of(Faces.toCore(request.clickedFace())) : Optional.empty());
     }
 

@@ -149,6 +149,10 @@ final class StickerCommands {
         if (part == ClearPart.NAME || part == ClearPart.ALL) {
             box.customName(null);
             StickerStore.setNameHidden(pdc, false);
+            // A name-only sticker only said where the name goes; without the name it goes too.
+            if (StickerStore.read(pdc).filter(s -> !s.hasIcon()).isPresent()) {
+                StickerStore.clear(pdc);
+            }
         }
         if (part == ClearPart.ICON || part == ClearPart.ALL) {
             var sticker = StickerStore.read(pdc);

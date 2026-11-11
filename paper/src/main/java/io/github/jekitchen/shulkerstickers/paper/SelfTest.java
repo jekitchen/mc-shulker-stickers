@@ -75,6 +75,8 @@ final class SelfTest {
 
     /** Region thread. */
     private void run(World world, Location origin) {
+        // Headless: no player is ever nearby, so display checks force "a player is nearby".
+        displays.forceNearby(true);
         check("datapack tag shulker_stickers:icon_blocklist is visible to plugins",
                 Bukkit.getTag(Tag.REGISTRY_ITEMS, IconItems.BLOCKLIST_TAG, Material.class) != null);
         check("bundled translations load (en_us)", Texts.has(TextKeys.EDITOR_SAVE)
@@ -238,6 +240,12 @@ final class SelfTest {
     private void displayTests(Location origin) {
         Block box = origin.clone().add(6, 0, 0).getBlock();
         placeDecoratedBox(box, BlockFace.UP, ICON);
+        // AC-8: displays exist only while a player is within view range.
+        displays.forceNearby(false);
+        displays.refresh(box);
+        check("with no player nearby no display entities are spawned, but the box is tracked",
+                displays.displaysAt(box).isEmpty() && displays.isTracked(box));
+        displays.forceNearby(true);
         displays.refresh(box);
         var spawned = displays.displaysAt(box);
         plugin.getLogger().info("SELFTEST INFO icon+name displays: " + spawned.stream()
@@ -272,6 +280,9 @@ final class SelfTest {
                         && td.getLocation().getZ() < nameOnly.getZ()
                         && net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
                                 .serialize(td.text()).endsWith("…"));
+        // Orientation convention: on the north-facing lid the text faces north and reads upright.
+        boolean facesOut = text.size() == 1 && facesOutUpright(text.getFirst(), new org.joml.Vector3f(0, 0, -1));
+        check("a name on a north lid faces north and reads upright", facesOut);
         // Plugin disable removes every display, including ones we no longer track.
         displays.refresh(nameOnly);
         var tracked = displays.displaysAt(nameOnly);
@@ -287,6 +298,18 @@ final class SelfTest {
                         && (DisplayManager.FOLIA || !stray.isValid()) && displays.count() == 0);
         stray.remove();
         dispenserIntoOccupiedSpaceTest(origin);
+    }
+
+    /** The display's image normal (+Z turned) points along {@code normal} and its top (+Y turned) points up. */
+    private static boolean facesOutUpright(Entity entity, org.joml.Vector3f normal) {
+        if (!(entity instanceof Display display)) {
+            return false;
+        }
+        org.joml.Quaternionf q = display.getTransformation().getLeftRotation();
+        org.joml.Vector3f n = q.transform(new org.joml.Vector3f(0, 0, 1));
+        org.joml.Vector3f up = q.transform(new org.joml.Vector3f(0, 1, 0));
+        return n.distance(normal) < 1e-3 && up.distance(new org.joml.Vector3f(0, 1, 0)) < 1e-3
+                && display.getLocation().getYaw() == 0f && display.getLocation().getPitch() == 0f;
     }
 
     /** A dispense that can't place (a box is already there) must not label the existing box. */
