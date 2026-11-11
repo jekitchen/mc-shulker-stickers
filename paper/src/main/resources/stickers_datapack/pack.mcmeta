@@ -1,0 +1,7 @@
+{
+  "pack": {
+    "description": "Shulker Stickers: keep sticker data when a shulker box drops",
+    "min_format": 121,
+    "max_format": 200
+  }
+}

@@ -1,6 +1,7 @@
 name: ShulkerStickers
 version: '${version}'
 main: io.github.jekitchen.shulkerstickers.paper.ShulkerStickersPaper
+bootstrapper: io.github.jekitchen.shulkerstickers.paper.ShulkerStickersBootstrap
 api-version: '26.3'
 folia-supported: true
 description: Recolor, label and rename placed shulker boxes. Works with vanilla clients.

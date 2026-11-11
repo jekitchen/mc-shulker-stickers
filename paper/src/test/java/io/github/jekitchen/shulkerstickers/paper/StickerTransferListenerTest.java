@@ -1,0 +1,95 @@
+package io.github.jekitchen.shulkerstickers.paper;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import io.github.jekitchen.shulkerstickers.core.Anchor;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import org.bukkit.Material;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
+import org.bukkit.block.BlockState;
+import org.bukkit.block.ShulkerBox;
+import org.bukkit.entity.Item;
+import org.bukkit.event.block.BlockDropItemEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockbukkit.mockbukkit.MockBukkit;
+import org.mockbukkit.mockbukkit.ServerMock;
+import org.mockbukkit.mockbukkit.entity.PlayerMock;
+import org.mockbukkit.mockbukkit.world.WorldMock;
+
+/** Sticker data must follow the box from block to item and back (PRD §6.2, first row). */
+class StickerTransferListenerTest {
+
+    private static final StickerData ICON = new StickerData("minecraft:cobblestone", "{}", Anchor.LID, 1);
+
+    private ServerMock server;
+    private WorldMock world;
+    private PlayerMock player;
+    private final StickerTransferListener listener = new StickerTransferListener();
+
+    @BeforeEach
+    void setUp() {
+        server = MockBukkit.mock();
+        world = server.addSimpleWorld("world");
+        player = server.addPlayer();
+    }
+
+    @AfterEach
+    void tearDown() {
+        MockBukkit.unmock();
+    }
+
+    @Test
+    void breakingCopiesBlockStickerOntoTheDroppedBox() {
+        Block block = world.getBlockAt(0, 70, 0);
+        block.setType(Material.RED_SHULKER_BOX);
+        ShulkerBox box = (ShulkerBox) block.getState();
+        StickerStore.write(box.getPersistentDataContainer(), ICON);
+        box.update(true, false);
+        BlockState brokenState = block.getState();
+        Item drop = world.dropItem(block.getLocation(), new ItemStack(Material.RED_SHULKER_BOX));
+        List<Item> drops = new ArrayList<>(List.of(drop));
+
+        listener.onDrop(new BlockDropItemEvent(block, brokenState, player, drops));
+
+        assertEquals(Optional.of(ICON), StickerStore.read(drop.getItemStack().getPersistentDataContainer()));
+    }
+
+    @Test
+    void breakingLeavesOtherDropsAlone() {
+        Block block = world.getBlockAt(0, 70, 0);
+        block.setType(Material.RED_SHULKER_BOX);
+        ShulkerBox box = (ShulkerBox) block.getState();
+        StickerStore.write(box.getPersistentDataContainer(), ICON);
+        box.update(true, false);
+        Item other = world.dropItem(block.getLocation(), new ItemStack(Material.STICK));
+        List<Item> drops = new ArrayList<>(List.of(other));
+
+        listener.onDrop(new BlockDropItemEvent(block, block.getState(), player, drops));
+
+        assertTrue(StickerStore.read(other.getItemStack().getPersistentDataContainer()).isEmpty());
+    }
+
+    @Test
+    void placingCopiesItemStickerOntoTheBlock() {
+        ItemStack stack = new ItemStack(Material.BLUE_SHULKER_BOX);
+        stack.editPersistentDataContainer(pdc -> StickerStore.write(pdc, ICON));
+        Block block = world.getBlockAt(0, 70, 0);
+        BlockState replaced = block.getState();
+        block.setType(Material.BLUE_SHULKER_BOX);
+        Block against = block.getRelative(BlockFace.DOWN);
+
+        listener.onPlace(new BlockPlaceEvent(block, replaced, against, stack, player, true, EquipmentSlot.HAND));
+
+        ShulkerBox placed = (ShulkerBox) block.getState();
+        assertEquals(Optional.of(ICON), StickerStore.read(placed.getPersistentDataContainer()));
+    }
+}

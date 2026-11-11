@@ -18,6 +18,12 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:${property("paper_api_version")}")
     implementation(project(":core"))
     shade(project(":core"))
+
+    testImplementation("io.papermc.paper:paper-api:${property("paper_api_version")}")
+    testImplementation("org.mockbukkit.mockbukkit:mockbukkit-v26.3:${property("mockbukkit_version")}")
+    testImplementation(platform("org.junit:junit-bom:${property("junit_version")}"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.jar {
