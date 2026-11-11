@@ -26,7 +26,8 @@
 1. **Side anchor:** a new key `shulker_stickers:face` (lowercase face name) records the exact face of the icon on a placed box. `rot` keeps meaning rotation (0–3) on top/bottom faces. On placement, `face` is recomputed from the anchor rule.
 2. **Name without an icon:** whenever Save writes a name, it also writes `anchor`/`face` for the face that was clicked, so the name has a face. Old data with a name but no anchor draws on the lid.
 3. **Blocked words:** entries wrapped in slashes (`/regex/`) are regular expressions; anything else is a case-insensitive whole-word match.
-4. **Editor layout:** Paper's slots win (preview 18, use off-hand 20, remove icon 21, rename 22, cancel 25, save 26; colors 0–16).
+4. **`icon_visual` is compact JSON, not SNBT.** Paper's API can't produce SNBT for item components, but both platforms can run Minecraft's component codecs with JSON ops. The stored value is `core.rules.IconVisuals.canonicalize(...)`: only the visual components, keys sorted, no whitespace, and absent when nothing visual is left. It's still a string inside `custom_data`, so nothing else changes.
+5. **Editor layout:** Paper's slots win (preview 18, use off-hand 20, remove icon 21, rename 22, cancel 25, save 26; colors 0–16).
 
 ## Review Focus
 
