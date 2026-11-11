@@ -1,6 +1,6 @@
 # Shulker Stickers — PRD
 
-Status: Draft v0.4 (M0 spike results applied; items marked *proposed* await the owner) · Owner: Jim Kitchen
+Status: Draft v0.5 (M0 spike results applied; v0.4 proposals decided by the owner on 11 Nov 2026) · Owner: Jim Kitchen
 
 ## 1. Summary
 
@@ -13,7 +13,7 @@ It ships as **two builds that share one core**:
 
 The server is authoritative in both builds. Vanilla clients see icons and names with nothing installed, and removing the mod or plugin leaves nothing behind in the world.
 
-**Key decisions** (✅ = confirmed by Jim on 11 Nov 2026; everything else is proposed):
+**Key decisions** (✅ = confirmed by Jim on 11 Nov 2026; the v0.4 proposals were decided the same day, see §12):
 
 | Decision | Default | Why |
 |---|---|---|
@@ -139,7 +139,7 @@ This is a server-side 3-row chest menu titled "Edit: ‹box name›". Every slot
   - **Cancel:** discards the staged changes and closes.
   - **Save:** applies everything in one server tick and closes. If costs are configured, they're shown on this button.
 
-**Esc works the same as Cancel:** staged changes are discarded, and the action bar says "Changes discarded" if there were any. If Save fails, the editor stays open and shows the reason.
+**Esc works the same as Cancel:** staged changes are discarded, and the action bar says "Changes discarded" if there were any. If Save fails for a reason the player can fix (can't afford it, a blocked name, an icon that isn't allowed, a lost permission), the editor stays open and shows the reason. If the box itself is gone, moved or changed, the editor closes with a message (§9). Nothing is charged for a failed Save.
 
 **Menu safety (anti-duplication):** the editor rejects every interaction that doesn't land on one of its buttons. That includes shift-clicking from the player's inventory, number-key and off-hand swaps, double-click collecting, dragging, and clicking outside the window. Each case has its own test (AC-12).
 
@@ -161,7 +161,7 @@ This is a server-side 3-row chest menu titled "Edit: ‹box name›". Every slot
 - The name is stored in vanilla `custom_name`, so renaming at a real anvil still works.
 - **Moderation:** an optional list of blocked words is checked at Save. A permission controls who can have their names shown on boxes, and admins can clear any name.
 - It is drawn as a text display on the icon's face, under the icon, or centered on the face if there's no icon.
-- Defaults: fixed billboard (flat on the face), about 0.3 scale, at most 24 characters shown with "…" after that, a view range of about 16 blocks, no background, and shadowed text.
+- Defaults: fixed billboard (flat on the face), about 0.3 scale, at most 24 characters shown with "…" after that, a view range of about 10 blocks, no background, and shadowed text.
 - The vanilla GUI title shows the full name.
 
 ### 5.5 Display placement, light and lid
@@ -191,20 +191,20 @@ All sticker data lives in `minecraft:custom_data → PublicBukkitValues`. That i
 | `shulker_stickers:anchor` | string | `lid`, `base` or `side` |
 | `shulker_stickers:rot` | int | Icon rotation on the top and bottom faces (0–3) |
 | `shulker_stickers:face` | string | *(New in v0.4.)* The exact face the icon is on for a placed box, lowercase (`north`). Needed because `side` alone doesn't say which side. Recomputed when the box is placed again |
-| `shulker_stickers:name_hidden` | int | *(New in v0.4, proposed.)* 1 if the name was saved by a player without `shulker_stickers.name.display`; the name is kept but not drawn |
+| `shulker_stickers:name_hidden` | int | *(New in v0.4.)* 1 if the name was saved by a player without `shulker_stickers.name.display`; the name is kept but not drawn |
 
 - **Color** is the block or item ID itself (17 vanilla variants). **Name** is vanilla `custom_name`.
 - **Why not a custom component:** registered component types are synced to clients, and a vanilla client that receives an unknown type disconnects.
-- **Why strings and a version:** Minecraft's automatic data upgrade doesn't reach inside `custom_data`. We store the item ID and SNBT text, and migrate them ourselves using the version number. If an icon can't be read, the raw data is kept and nothing is drawn, so a later fix can still recover it.
-- **Placed boxes:** Paper keeps block-entity persistent data in the block entity's own `PublicBukkitValues`. Fabric keeps the `custom_data` component in the block entity (confirmed: `BlockEntity#applyComponents` keeps it and saves it under `components`). Items are portable either way. Whether a *placed* box keeps its stickers when a world moves between platforms is still open.
-- **Name without an icon** *(proposed)*: when Save writes a name, it also writes `anchor` and `face` for the face that was clicked. A name with no anchor is drawn on the lid.
+- **Why strings and a version:** Minecraft's automatic data upgrade doesn't reach inside `custom_data`. We store the item ID and JSON text, and migrate them ourselves using the version number. If an icon can't be read, the raw data is kept and nothing is drawn, so a later fix can still recover it.
+- **Placed boxes:** Paper keeps block-entity persistent data in the block entity's own `PublicBukkitValues`. Fabric keeps the `custom_data` component in the block entity (confirmed: `BlockEntity#applyComponents` keeps it and saves it under `components`). Items are portable either way. **Worlds are portable too:** when a shulker box loads with sticker data in the other platform's spot, it is moved into ours once (on chunk load, both platforms).
+- **Name without an icon:** when Save writes a name, it also writes `anchor` and `face` for the face that was clicked. A name with no anchor is drawn on the lid.
 - **Anchor on re-placement:** `lid` is the face the box points to, `base` the opposite face and `side` one of the four in between. A `side` icon goes on the side facing the player who placed the box. For a dispenser, it goes on the side facing back toward the dispenser, or north if no side does.
 
 ### 6.2 Persistence matrix (must pass on both platforms)
 
 | Path | Expected | Mechanism / risk |
 |---|---|---|
-| Break → pick up → place | Preserved | **Confirmed in M0:** the vanilla loot table copies only `custom_name`, `container`, `lock` and `container_loot`, so `custom_data` is lost. Fabric: `LootTableEvents.MODIFY_DROPS` copies it. Paper: a built-in datapack (registered at bootstrap) overrides the 17 shulker loot tables with a `copy_custom_data` step. **Risk:** another datapack overriding the same loot tables replaces ours |
+| Break → pick up → place | Preserved | **Confirmed in M0:** the vanilla loot table copies only `custom_name`, `container`, `lock` and `container_loot`, so `custom_data` is lost. Fabric: `LootTableEvents.MODIFY_DROPS` copies it. Paper: a built-in datapack (registered at bootstrap) overrides the 17 shulker loot tables with a `copy_custom_data` step. **Both platforms copy only our keys**; other data in `custom_data` behaves as in vanilla. **Risk:** another datapack overriding the same loot tables replaces ours; Paper logs a warning at startup when that happens |
 | Piston pushes box / explosion | Box drops as item, data preserved | Same drop path |
 | Hopper, dropper, ender chest, chests | Preserved | The stack moves with its components |
 | Dispenser places box | Preserved; displays attached | Anchor rule from §6.1. Paper: `BlockPlaceEvent` doesn't fire for dispensers, so this needs its own handler |
@@ -255,7 +255,7 @@ Only `core` holds the gameplay rules, so the two builds behave the same.
 - **Interaction:** sneak + empty main hand on a shulker box. Fabric: a use-block event. Paper: `PlayerInteractEvent` for the main hand, honoring cancellation by protection plugins.
 - **Editor and rename screen:** hand-rolled on both platforms (Fabric: server-side chest and anvil menus; Paper: the inventory and menu APIs, plus Paper's anvil view for the rename text *(verify)*). No GUI library.
 - **Display manager:** attach, refresh, hide while open, remove on break.
-- **Protection:** Fabric uses vanilla checks plus Common Protection API if present. Paper respects cancelled interact events and runs a build-permission check that claim plugins (WorldGuard, GriefPrevention, Lands, HuskClaims) honor *(verify the method per plugin)*. **Editing needs build permission, not just container access.**
+- **Protection:** Fabric uses vanilla checks plus Common Protection API if present. Paper respects cancelled interact events and, when installed, asks GriefPrevention, WorldGuard, Lands and Towny directly through their APIs (soft dependencies). For other claim plugins, `protection.simulate_place_event` (off by default) fires a test block-place event; it is off because logging plugins such as CoreProtect would record a placement, and rolling that player back would delete the box. **Editing needs build permission, not just container access.**
 - **Config and commands:** the schema and command tree live in `core`. Brigadier commands on both platforms.
 
 ### 7.4 Technical baseline (checked 11 Nov 2026)
@@ -281,17 +281,18 @@ Config file: `config/shulker_stickers.json` (Fabric) or `plugins/ShulkerStickers
 
 | Key | Default | Notes |
 |---|---|---|
-| `color.enabled` / `icon.enabled` / `name.edit_enabled` / `name.display_enabled` | `true` | Turn each feature on or off |
+| `color.enabled` / `icon.enabled` / `name.edit_enabled` / `name.display_enabled` | `true` | Turn each feature on or off. `icon.enabled = false` also hides icons already on boxes (the data is kept) |
 | `color.cost`, `icon.cost`, `name.cost` | `{type:"none"}` | Or `xp_levels` / `item` with an amount; charged on Save only for what changed |
 | `icon.blocklist` | `[]` plus the tag `#shulker_stickers:icon_blocklist` | The tag works on both platforms (Paper: shipped in the plugin's built-in datapack) |
 | `icon.max_data_bytes` | 2048 | Icons larger than this aren't drawn |
-| `icon.view_range` / `name.view_range` | 32 / 16 blocks | |
+| `icon.view_range` / `name.view_range` | 32 / 10 blocks | Shorter name range keeps big storage walls within AC-8 on Paper/Canvas |
 | `icon.full_bright` | `false` | Draw icons fully lit |
 | `name.max_display_chars` | 24 | Characters shown on the box |
-| `name.blocked_words` | `[]` | Plain words match whole words, ignoring case; entries wrapped in slashes (`/b[a4]d/`) are regular expressions *(proposed)* |
+| `name.blocked_words` | `[]` | Plain words match whole words, ignoring case; entries wrapped in slashes (`/b[a4]d/`) are regular expressions; an invalid pattern is skipped with a warning |
 | `display.hide_while_open` | `true` | |
 | `help.first_place_message` | `true` | |
 | `allow_adventure_mode` | `false` | |
+| `protection.simulate_place_event` | `false` | Paper only. Fire a test block-place event so unsupported claim plugins can refuse. Can make logging plugins record a placement that a rollback would undo |
 
 **Permissions:** Paper uses the server's own permission system (LuckPerms and others work automatically). Fabric uses the Fabric Permissions API if it's installed, otherwise op levels.
 
@@ -319,7 +320,7 @@ Config file: `config/shulker_stickers.json` (Fabric) or `plugins/ShulkerStickers
 | Two players try to edit the same box | The second gets "Being edited by ‹player›" |
 | Box broken, moved or changed while the editor is open | Save is refused, the editor closes with a message, nothing is charged |
 | Player walks out of reach or logs out with the editor open | The editor closes; the staged changes are discarded |
-| Box has a vanilla `lock` | Editing requires holding the key, the same as opening the box |
+| Box has a vanilla `lock` | Editing requires the key in either hand. The gesture needs an empty main hand, so in practice it's the off-hand, and "Use off-hand item" then offers only the key as an icon |
 | Player has container access but not build access in a claim | The editor is refused |
 | Off-hand holds a totem or shield | Nothing happens unless "Use off-hand item" is clicked |
 | Sneak + empty main hand + block in the off-hand | The editor opens instead of placing the block (§5.1); `/shulkerstickers toggle` restores vanilla |
@@ -350,7 +351,7 @@ GT = automated test (Fabric GameTest or Paper integration test); M = checked man
 7. **AC-7 Config (GT/M):** each setting takes effect after `/shulkerstickers reload`.
 8. **AC-8 Performance (M):** 1,000 decorated boxes loaded add less than 0.5 ms/tick.
 9. **AC-9 No main-hand conflict (GT):** sneak + right-click on a box with any item in the main hand behaves exactly as in vanilla.
-10. **AC-10 Protection (GT/M):** spawn protection, a locked box, and claims from WorldGuard, GriefPrevention and Common Protection API all refuse the editor and change nothing.
+10. **AC-10 Protection (GT/M):** spawn protection, a locked box, and claims from WorldGuard, GriefPrevention, Lands, Towny and Common Protection API all refuse the editor and change nothing.
 11. **AC-11 Staging (GT):** Cancel, Esc, disconnecting and walking out of reach all leave the box unchanged and charge nothing; Save applies all staged changes together.
 12. **AC-12 Menu safety (GT):** every click type (shift-click, number keys, off-hand swap, double-click, drag, click outside) leaves the player's inventory and the box exactly as they were.
 13. **AC-13 Portability (GT/M):** an item stickered on Fabric shows the same sticker on Paper, and the reverse. A 26.3 world upgraded to 26.4 keeps every icon.
@@ -364,7 +365,7 @@ GT = automated test (Fabric GameTest or Paper integration test); M = checked man
 |---|---|---|
 | **M0: spike** (about 1.5–2 weeks) | **First: confirm that Canvas (and Folia) have a usable 26.3 build.** Set up the three-module repo. On Fabric, Paper and Canvas: a display on a placed box, the recolor swap with a test, the anvil-style rename screen on a vanilla client, data surviving break and pick-up, and (Canvas) spawning displays and opening menus from the right threads. Check every item in §12's verify list | AC-1 on all three platforms; a go/no-go on the Paper/Canvas rendering approach |
 | **0.1 MVP (alpha)** | **Fabric + Paper + Canvas**, all MVP stories. Modrinth (Fabric and Paper/Canvas jars) and Hangar (Paper/Canvas jar) alpha builds | AC-1 to AC-7, AC-9 and AC-11 to AC-16 on **all three platforms** |
-| **0.2 Beta** | Lid animation, claims integrations, costs, performance pass | All acceptance criteria on all three platforms, including AC-8 and AC-10 |
+| **0.2 Beta** | Lid animation, further claims integrations (Paper ships GriefPrevention, WorldGuard, Lands and Towny in 0.1), costs, performance pass (AC-8 with real players) | All acceptance criteria on all three platforms, including AC-8 and AC-10 |
 | **1.0** | Port to 26.4; optional Fabric client companion (inventory overlay, client-drawn icons, inventory editing); README and listing copy | Release-candidate soak on test servers for each platform; zero data-loss bugs open |
 | Ongoing | Each new Minecraft release: best effort within 2 weeks of the platform's stable build | |
 
@@ -420,22 +421,19 @@ Still needs a vanilla client: the rename screen at zero XP cost, icon orientatio
 - **Platforms:** Fabric + Paper + Canvas.
 - **Naming:** Shulker Stickers / `shulker_stickers`; all commands are `/shulkerstickers <param>`.
 
-### Proposed in v0.4 (awaiting the owner)
+### Decisions on the v0.4 proposals (owner, 11 Nov 2026)
 
-- **`face` key** for the exact icon face on a placed box (§6.1).
-- **`icon_visual` as JSON** instead of SNBT (§6.1).
-- **`name_hidden` key** for names saved without `name.display` permission (§6.1).
-- **Name without an icon** gets the clicked face (§6.1).
-- **Blocked-word syntax:** `/regex/` vs whole words (§8).
-- **Paper drop path via a built-in datapack** that overrides the shulker loot tables (§6.2), with the conflict risk noted.
-- **Locked boxes (§9):** vanilla wants the key in the main hand, but the gesture needs an empty main hand. Fabric currently accepts the key in **either** hand; Paper currently **always refuses** locked boxes. Proposed: accept the key in the off-hand on both.
-- **Claims in 0.1 (§7.3, AC-10):** Paper honors claim plugins only through the right-click they already cancel. It doesn't fire fake block-break/place events, because logging plugins would record edits that never happened. So a claim that allows opening containers but not building still lets the editor open. Per-plugin build checks are planned for 0.2. Fabric uses spawn protection, `mayInteract` and Common Protection API.
-- **Placed-box data across platforms (§6.1):** Fabric keeps a placed box's sticker in the block entity's `components."minecraft:custom_data".PublicBukkitValues`; Paper keeps it in the block entity's root `PublicBukkitValues`. Items are identical, but a *world* moved between platforms loses (Fabric→Paper) or shows stale (Paper→Fabric) stickers on placed boxes. Options: accept and document it, or add a one-time migration on chunk load on each platform.
-- **Drop copy scope (§6.2):** Fabric copies the box's whole `custom_data` onto the drop (other mods' data survives too); Paper's datapack copies only our keys (vanilla behavior for everything else). Pick one.
-- **`icon.enabled = false` (§8):** Fabric still draws existing icons; Paper hides them. Proposed: hide them (the setting reads as "icons off").
-- **Cosmetics to align:** icon scale (Fabric 0.5, Paper 0.45) and name offset; filler panes and greyed-button items in the editor; `inspect` output layout.
-- **AC-8 on Paper/Canvas:** 1,000 boxes with real display entities cost about 0.68 ms/tick (target 0.5). Being fixed by spawning displays only near players; Fabric (packet-only) is at 0.04 ms.
-- **Apply failure closes the editor:** §5.2 says a failed Save keeps the editor open with the reason, but §9 says a box that's gone or changed closes it. The builds follow §9 for those cases.
+1. **Data format:** the `face` key, `icon_visual` as JSON and the `name_hidden` flag are accepted (§6.1).
+2. **Locked boxes:** the key counts in either hand on both platforms (§9).
+3. **Claims on Paper in 0.1:** built-in checks for GriefPrevention, WorldGuard, Lands and Towny when installed; a test block-place event for other claim plugins, behind `protection.simulate_place_event`, off by default because of logging-plugin rollbacks (§7.3, §8).
+4. **Worlds moved between platforms:** placed-box data is migrated on chunk load on both platforms (§6.1).
+5. **Drop copy scope:** only our keys, on both platforms. Paper keeps the built-in datapack and warns when another pack overrides the shulker loot tables (§6.2).
+6. **AC-8 on Paper/Canvas:** accepted for 0.1 with `name.view_range` lowered to 10. Profile with real players (spark) and choose the real fix in the 0.2 performance pass.
+7. **`icon.enabled = false`** hides existing icons too; the data is kept (§8).
+8. **Name without an icon** goes on the face clicked at Save; older names with no face go on the lid (§6.1).
+9. **Blocked words:** whole words by default, `/regex/` for patterns (§8).
+10. **Failed Save:** fixable problems keep the editor open; a box that's gone, moved or changed closes it. Nothing is charged (§5.2, §9).
+11. **Cosmetics:** the shared look (icon and name scale and offsets, editor filler and unavailable-button items, `inspect` layout) moves into `core`, starting from the Fabric build's values; tuned at the first vanilla-client check.
 
 ### Closed 11 Nov 2026 (no open questions)
 

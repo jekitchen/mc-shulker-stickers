@@ -20,17 +20,19 @@ Branch: `spike/m0` (not pushed). Worktree: `.claude/worktrees/m0-spike`.
 
 Each platform had an independent code review, then a cross-platform parity review, then a review of the fixes (which caught a free-edit hole in Paper payments, now fixed: payment is taken at Save and unapplied parts are refunded). Every critical and important finding was fixed with a test that failed first.
 
-## Decisions for the owner
+## Owner decisions (11 Nov 2026) and the work they create
 
-All are listed in `docs/PRD.md` §12 under "Proposed in v0.4". The short version:
+All eleven v0.4 proposals are decided; see `docs/PRD.md` §12. Code changes still to make:
 
-1. **Data format additions:** a `face` key (exact icon face), a `name_hidden` key, and `icon_visual` stored as JSON instead of SNBT.
-2. **Locked boxes:** Fabric accepts the key in either hand; Paper always refuses. Proposed: off-hand key on both.
-3. **Claims on Paper in 0.1:** only honored through the cancelled right-click (no fake block events, so logging plugins stay clean). Per-plugin build checks in 0.2?
-4. **Placed boxes when a world moves between Fabric and Paper:** stickers on placed boxes don't carry over (items do). Accept, or add a migration?
-5. **Drop copy scope:** Fabric copies a box's whole `custom_data`; Paper copies only our keys.
-6. **AC-8 on Paper with a player in view of 1,000 boxes:** 0.7 ms. Options in `docs/spike/perf-ac8.md` (one entity per box, shorter default view range, or accept for 0.1).
-7. **Small things:** `icon.enabled = false` hiding existing icons, blocked-word `/regex/` syntax, a name with no icon going on the clicked face, and cosmetic alignment (icon scale, filler panes).
+1. **Locked boxes (Paper):** accept the key in either hand, as Fabric does.
+2. **Claims (Paper):** soft integrations for GriefPrevention, WorldGuard, Lands and Towny; `protection.simulate_place_event` (default off) for other claim plugins.
+3. **World migration (both):** on chunk load, move sticker data stored in the other platform's spot into ours.
+4. **Drop copy (Fabric):** copy only our keys. **(Paper):** warn at startup if another datapack overrides the shulker loot tables.
+5. **AC-8:** `name.view_range` default 16 -> 10 on both.
+6. **`icon.enabled = false` (Fabric):** hide existing icons.
+7. **Cosmetics:** move icon/name scale and offsets, editor filler and unavailable-button items, and the `inspect` layout into `core`; start from Fabric's values.
+
+Already matching the decisions: the data format, name-only face, blocked-word syntax and failed-Save behavior.
 
 ## Checks that need a vanilla 26.3 client
 
