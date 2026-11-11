@@ -234,6 +234,8 @@ final class SelfTest {
         placeDecoratedBox(box, BlockFace.UP, ICON);
         displays.refresh(box);
         var spawned = displays.displaysAt(box);
+        plugin.getLogger().info("SELFTEST INFO icon+name displays: " + spawned.stream()
+                .map(e -> e.getType() + (e.isValid() ? "" : "(invalid)")).toList());
         check("display entities spawn from a region thread (icon + name)", spawned.size() == 2
                 && spawned.stream().allMatch(e -> e instanceof Display && e.isValid()));
         check("display entities are never saved (persistent=false)", spawned.stream().noneMatch(Entity::isPersistent));
@@ -271,6 +273,7 @@ final class SelfTest {
     private void placeDecoratedBox(Block block, BlockFace facing, Sticker sticker) {
         Directional data = (Directional) Material.SHULKER_BOX.createBlockData();
         data.setFacing(facing);
+        block.setType(Material.AIR, false); // a fresh block entity, whatever an earlier run left here
         block.setBlockData(data, false);
         ShulkerBox state = (ShulkerBox) block.getState();
         for (int slot = 0; slot < 27; slot++) {
