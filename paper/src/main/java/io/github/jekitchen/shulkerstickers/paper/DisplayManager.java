@@ -142,7 +142,7 @@ final class DisplayManager {
             return null;
         }
         try {
-            return BlockFace.valueOf(name);
+            return BlockFace.valueOf(name.toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException e) {
             return null;
         }

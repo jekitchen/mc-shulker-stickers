@@ -71,7 +71,7 @@ class StickerTransferListenerTest {
                 true, EquipmentSlot.HAND));
 
         ShulkerBox placed = (ShulkerBox) block.getState();
-        assertEquals("SOUTH", placed.getPersistentDataContainer().get(StickerKeys.FACE,
+        assertEquals("south", placed.getPersistentDataContainer().get(StickerKeys.FACE,
                 org.bukkit.persistence.PersistentDataType.STRING));
     }
 }

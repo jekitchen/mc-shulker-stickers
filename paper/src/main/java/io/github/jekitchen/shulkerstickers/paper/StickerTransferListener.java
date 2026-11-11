@@ -39,7 +39,7 @@ final class StickerTransferListener implements Listener {
                     Vector toPlayer = event.getPlayer().getEyeLocation().toVector()
                             .subtract(block.getLocation().add(0.5, 0.5, 0.5).toVector());
                     state.getPersistentDataContainer().set(StickerKeys.FACE, PersistentDataType.STRING,
-                            Faces.sideToward(facing, toPlayer).name());
+                            Faces.sideToward(facing, toPlayer).name().toLowerCase(java.util.Locale.ROOT));
                 });
         state.update(true, false);
     }

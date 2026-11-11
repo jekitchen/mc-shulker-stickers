@@ -372,7 +372,8 @@ final class EditorService implements Listener {
                 Anchor anchor = Anchor.of(Faces.toCore(facing), Faces.toCore(session.clickedFace));
                 StickerStore.write(pdc, new StickerData(id, session.stagedIconVisual, anchor, session.rotation));
                 if (anchor == Anchor.SIDE) {
-                    pdc.set(StickerKeys.FACE, PersistentDataType.STRING, session.clickedFace.name());
+                    pdc.set(StickerKeys.FACE, PersistentDataType.STRING,
+                            session.clickedFace.name().toLowerCase(java.util.Locale.ROOT));
                 }
             });
         }
