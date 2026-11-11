@@ -3,6 +3,7 @@
   "package": "io.github.jekitchen.shulkerstickers.fabric.mixin",
   "compatibilityLevel": "JAVA_25",
   "mixins": [
+    "BlockEntityLoadMixin",
     "BlockItemMixin"
   ],
   "injectors": {

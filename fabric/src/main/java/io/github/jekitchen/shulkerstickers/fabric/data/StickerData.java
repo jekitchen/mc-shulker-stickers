@@ -107,7 +107,32 @@ public final class StickerData {
         }));
     }
 
+    /**
+     * A box saved by Paper (owner decision 4): {@code paperValues} is the block entity's root
+     * {@code PublicBukkitValues}, which is what Paper displayed. Our keys there replace ours in
+     * {@code custom_data}, which on Paper is only a stale copy of the item the box was placed
+     * from. Other keys are left alone.
+     */
+    public static void adoptPaperValues(BlockEntity blockEntity, CompoundTag paperValues) {
+        // Runs while the block entity loads, so it doesn't mark the chunk changed. If the chunk is
+        // never re-saved, the old data is still on disk and this simply runs again next load.
+        update(blockEntity, false, bukkit -> {
+            for (String key : StickerFormat.BOX_KEYS) {
+                String full = StickerFormat.fullKey(key);
+                bukkit.remove(full);
+                Tag tag = paperValues.get(full);
+                if (tag != null) {
+                    bukkit.put(full, tag.copy());
+                }
+            }
+        });
+    }
+
     private static void update(BlockEntity blockEntity, Consumer<CompoundTag> edit) {
+        update(blockEntity, true, edit);
+    }
+
+    private static void update(BlockEntity blockEntity, boolean markChanged, Consumer<CompoundTag> edit) {
         CustomData current = blockEntity.components().getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
         CustomData updated = current.update(tag -> {
             CompoundTag bukkit = tag.getCompoundOrEmpty(StickerFormat.BUKKIT_VALUES);
@@ -122,7 +147,9 @@ public final class StickerData {
                 .addAll(blockEntity.components())
                 .set(DataComponents.CUSTOM_DATA, updated.isEmpty() ? null : updated)
                 .build());
-        blockEntity.setChanged();
+        if (markChanged) {
+            blockEntity.setChanged();
+        }
     }
 
     private static CompoundTag bukkitValues(@Nullable CustomData data) {
