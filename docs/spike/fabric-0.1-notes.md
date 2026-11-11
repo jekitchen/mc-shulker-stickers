@@ -103,3 +103,21 @@ All of the spike's list (`docs/spike/m0-fabric.md`) still applies. New items:
 - The hide-while-open pass visits every drawn box each tick. It's cheap per box, but it should be measured for AC-8 (1,000 boxes).
 - Not tested with an automated test: the Esc "Changes discarded" message, the disconnect lock release, `inspect` output, and `reload`'s redraw.
 - Lid animation (v0.2) isn't started.
+
+## Code-review fixes (11 Nov 2026)
+
+Each fix has a GameTest in `ReviewFixGameTests` that failed before the fix. 60 GameTests now pass (was 49).
+
+| Finding | Fix |
+|---|---|
+| 1 (critical) Save erased sticker data this version can't read | The editor remembers when sticker keys exist but don't decode, and Save leaves them alone unless the player changed or removed the icon |
+| 2 (critical) Esc on the rename screen left a dead editor and a held lock | Rename callbacks run a tick later (`server.schedule`), after vanilla's `doCloseContainer` has finished. `reopen` ends the session if the player left or another menu took over |
+| 3 Rename text skipped vanilla's filter; preview lagged a keystroke | The text goes through `StringUtil.filterText` (no `§` or control characters) before `super.setItemName`, so the preview is current |
+| 4 Displays on a chunk edge attached to (and loaded) the neighbouring chunk | The holder is attached to the box's own chunk; the display still sits just outside the face for lighting |
+| 5 `reload` skipped boxes that weren't drawn | Every loaded shulker box is tracked (weakly), and `refreshAll` redraws all of them |
+| 6 Save checked "same box" by color only | Save also requires the same block-entity instance the editor opened on |
+| Minor 7 The off-hand block was **placed** after the gesture | Worse than the review said: the server placed it. The gesture now refuses the follow-up off-hand click and resends the inventory |
+| Minor 10 All editing turned off still opened an empty editor | The gesture falls through to vanilla |
+| Minor 11 Item costs took any matching item, including armor, off-hand, named or enchanted items | Only plain items from the main inventory and hotbar are counted and taken |
+
+Not changed: minor 8 (measure hide-while-open with spark) and minor 9 (two dispensers aimed at one spot).

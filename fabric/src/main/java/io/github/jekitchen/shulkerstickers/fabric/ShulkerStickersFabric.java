@@ -41,8 +41,7 @@ public final class ShulkerStickersFabric implements ModInitializer {
     /** Sneak + right-click a placed box with an empty main hand opens the editor (PRD §5.1). */
     private static void registerGesture() {
         UseBlockCallback.EVENT.register((player, level, hand, hit) -> {
-            if (hand != InteractionHand.MAIN_HAND
-                    || !player.isSecondaryUseActive()
+            if (!player.isSecondaryUseActive()
                     || !player.getMainHandItem().isEmpty()
                     || !(level.getBlockState(hit.getBlockPos()).getBlock() instanceof ShulkerBoxBlock)) {
                 return InteractionResult.PASS;
@@ -50,8 +49,17 @@ public final class ShulkerStickersFabric implements ModInitializer {
             if (player instanceof ServerPlayer serverPlayer && PlayerPrefs.gestureOff(serverPlayer)) {
                 return InteractionResult.PASS;
             }
-            if (player.isSpectator()) {
+            if (player.isSpectator() || !EditorMenu.anyEditingEnabled(Settings.config())) {
                 return InteractionResult.PASS;
+            }
+            if (hand == InteractionHand.OFF_HAND) {
+                // A vanilla client follows the gesture's main-hand click with an off-hand click and
+                // predicts placing the off-hand block. Refuse it, and resend the inventory so the
+                // client's off-hand count is put right (PRD §5.1).
+                if (player instanceof ServerPlayer serverPlayer) {
+                    serverPlayer.inventoryMenu.sendAllDataToRemote();
+                }
+                return InteractionResult.FAIL;
             }
             if (level instanceof ServerLevel serverLevel && player instanceof ServerPlayer serverPlayer) {
                 EditorMenu.tryOpen(serverPlayer, serverLevel, hit.getBlockPos(), hit.getDirection());

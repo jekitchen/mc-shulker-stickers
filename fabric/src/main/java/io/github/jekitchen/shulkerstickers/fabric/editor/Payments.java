@@ -12,7 +12,7 @@ import java.util.stream.Collectors;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.ContainerHelper;
+import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
@@ -30,8 +30,7 @@ public final class Payments {
             return false;
         }
         for (Map.Entry<Item, Integer> need : itemTotals(costs).entrySet()) {
-            int have = ContainerHelper.clearOrCountMatchingItems(player.getInventory(), s -> s.is(need.getKey()), Integer.MAX_VALUE, true);
-            if (have < need.getValue()) {
+            if (countPlain(player, need.getKey()) < need.getValue()) {
                 return false;
             }
         }
@@ -47,8 +46,7 @@ public final class Payments {
         if (levels > 0) {
             player.giveExperienceLevels(-levels);
         }
-        itemTotals(costs).forEach((item, amount) ->
-                ContainerHelper.clearOrCountMatchingItems(player.getInventory(), s -> s.is(item), amount, false));
+        itemTotals(costs).forEach((item, amount) -> takePlain(player, item, amount));
         player.getInventory().setChanged();
     }
 
@@ -60,6 +58,37 @@ public final class Payments {
                     item(c.itemId()).map(i -> new ItemStack(i).getHoverName().getString()).orElse(c.itemId()));
             case NONE -> "";
         }).filter(s -> !s.isEmpty()).collect(Collectors.joining(", "));
+    }
+
+    /**
+     * Costs are paid only with plain items (no name, enchantments or other data) from the main
+     * inventory and hotbar, never from armor or the off-hand.
+     */
+    private static boolean isPlain(ItemStack stack, Item item) {
+        return stack.is(item) && stack.getComponentsPatch().isEmpty();
+    }
+
+    private static int countPlain(ServerPlayer player, Item item) {
+        int count = 0;
+        for (int slot = 0; slot < Inventory.INVENTORY_SIZE; slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            if (isPlain(stack, item)) {
+                count += stack.getCount();
+            }
+        }
+        return count;
+    }
+
+    private static void takePlain(ServerPlayer player, Item item, int amount) {
+        int left = amount;
+        for (int slot = 0; slot < Inventory.INVENTORY_SIZE && left > 0; slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            if (isPlain(stack, item)) {
+                int taken = Math.min(left, stack.getCount());
+                stack.shrink(taken);
+                left -= taken;
+            }
+        }
     }
 
     private static Map<Item, Integer> itemTotals(List<Cost> costs) {

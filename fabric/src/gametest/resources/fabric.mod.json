@@ -12,7 +12,8 @@
       "io.github.jekitchen.shulkerstickers.fabric.test.IconGameTests",
       "io.github.jekitchen.shulkerstickers.fabric.test.EditRulesGameTests",
       "io.github.jekitchen.shulkerstickers.fabric.test.DisplayGameTests",
-      "io.github.jekitchen.shulkerstickers.fabric.test.SessionGameTests"
+      "io.github.jekitchen.shulkerstickers.fabric.test.SessionGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.ReviewFixGameTests"
     ]
   },
   "depends": {

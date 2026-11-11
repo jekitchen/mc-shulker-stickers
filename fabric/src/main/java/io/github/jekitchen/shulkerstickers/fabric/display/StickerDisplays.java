@@ -14,8 +14,10 @@ import io.github.jekitchen.shulkerstickers.fabric.Settings;
 import io.github.jekitchen.shulkerstickers.fabric.data.Icons;
 import io.github.jekitchen.shulkerstickers.fabric.data.StickerData;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -53,6 +55,8 @@ public final class StickerDisplays {
     private static final Map<ServerLevel, Map<BlockPos, ElementHolder>> HOLDERS = new WeakHashMap<>();
     /** Boxes whose displays are hidden because the box is open. */
     private static final Map<ServerLevel, Set<BlockPos>> HIDDEN = new WeakHashMap<>();
+    /** Every loaded shulker box, drawn or not, so a reload can redraw all of them. */
+    private static final Map<ServerLevel, Set<ShulkerBoxBlockEntity>> LOADED = new WeakHashMap<>();
 
     private StickerDisplays() {
     }
@@ -60,11 +64,13 @@ public final class StickerDisplays {
     public static void register() {
         ServerBlockEntityEvents.BLOCK_ENTITY_LOAD.register((blockEntity, level) -> {
             if (blockEntity instanceof ShulkerBoxBlockEntity box) {
+                LOADED.computeIfAbsent(level, l -> Collections.newSetFromMap(new WeakHashMap<>())).add(box);
                 show(level, box);
             }
         });
         ServerBlockEntityEvents.BLOCK_ENTITY_UNLOAD.register((blockEntity, level) -> {
-            if (blockEntity instanceof ShulkerBoxBlockEntity) {
+            if (blockEntity instanceof ShulkerBoxBlockEntity box) {
+                LOADED.getOrDefault(level, Set.of()).remove(box);
                 remove(level, blockEntity.getBlockPos());
                 HIDDEN.getOrDefault(level, new HashSet<>()).remove(blockEntity.getBlockPos());
             }
@@ -81,10 +87,15 @@ public final class StickerDisplays {
         }
     }
 
-    /** Redraws every box in a level, e.g. after a config reload. */
+    /** Redraws every loaded box in a level, drawn or not, e.g. after a config reload. */
     public static void refreshAll(ServerLevel level) {
         Set<BlockPos> positions = new HashSet<>(HOLDERS.getOrDefault(level, Map.of()).keySet());
         positions.addAll(HIDDEN.getOrDefault(level, Set.of()));
+        for (ShulkerBoxBlockEntity box : List.copyOf(LOADED.getOrDefault(level, Set.of()))) {
+            if (!box.isRemoved()) {
+                positions.add(box.getBlockPos().immutable());
+            }
+        }
         positions.forEach(pos -> refresh(level, pos));
     }
 
@@ -199,8 +210,10 @@ public final class StickerDisplays {
             holder.addElement(label);
         });
 
+        // The display sits just outside the face (for light) but belongs to the box's own chunk,
+        // so a box on a chunk edge never loads or depends on the neighbouring chunk.
         Vec3 at = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(FACE_OFFSET));
-        ChunkAttachment.of(holder, level, at);
+        new ChunkAttachment(holder, level.getChunkAt(pos), at, false);
         HOLDERS.computeIfAbsent(level, l -> new HashMap<>()).put(pos, holder);
     }
 

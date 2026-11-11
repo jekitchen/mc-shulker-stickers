@@ -47,6 +47,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.ItemLore;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
 import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The Sticker editor (PRD §5.2): a server-side 3-row chest menu whose slots are all
@@ -60,13 +61,20 @@ public final class EditorMenu extends ChestMenu {
         final Direction clickedFace;
         final StickerConfig config;
         final Optional<Sticker> originalSticker;
+        /** Sticker keys are present but this version can't read them; never overwrite them by accident. */
+        final boolean unreadableSticker;
+        /** The block entity the editor opened on; Save refuses if it was replaced. */
+        final @Nullable ShulkerBoxBlockEntity originalBox;
         Optional<Placement> placement;
 
-        EditState(EditorSession session, Direction clickedFace, StickerConfig config, Optional<Sticker> originalSticker) {
+        EditState(EditorSession session, Direction clickedFace, StickerConfig config, Optional<Sticker> originalSticker,
+                boolean unreadableSticker, @Nullable ShulkerBoxBlockEntity originalBox) {
             this.session = session;
             this.clickedFace = clickedFace;
             this.config = config;
             this.originalSticker = originalSticker;
+            this.unreadableSticker = unreadableSticker;
+            this.originalBox = originalBox;
             this.placement = originalSticker.map(Placement::of);
         }
     }
@@ -100,9 +108,10 @@ public final class EditorMenu extends ChestMenu {
     }
 
     private static EditState newState(ServerLevel level, BlockPos pos, Direction clickedFace, StickerConfig config) {
-        Optional<Sticker> sticker = level.getBlockEntity(pos) instanceof ShulkerBoxBlockEntity box
-                ? StickerData.read(box) : Optional.empty();
-        return new EditState(new EditorSession(readState(level, pos)), clickedFace, config, sticker);
+        ShulkerBoxBlockEntity box = level.getBlockEntity(pos) instanceof ShulkerBoxBlockEntity b ? b : null;
+        Optional<Sticker> sticker = box == null ? Optional.empty() : StickerData.read(box);
+        boolean unreadable = box != null && sticker.isEmpty() && !StickerData.rawValues(box).isEmpty();
+        return new EditState(new EditorSession(readState(level, pos)), clickedFace, config, sticker, unreadable, box);
     }
 
     /**
@@ -140,6 +149,11 @@ public final class EditorMenu extends ChestMenu {
         Optional<String> name = Optional.ofNullable(box.getCustomName()).map(Component::getString);
         Optional<Sticker> sticker = StickerData.read(box);
         return new BoxState(color, sticker.flatMap(Sticker::iconId), sticker.flatMap(Sticker::iconVisual), name);
+    }
+
+    /** With color, icon and name editing all turned off, the gesture does nothing (PRD §5.1). */
+    public static boolean anyEditingEnabled(StickerConfig config) {
+        return config.colorEnabled() || config.iconEnabled() || config.nameEditEnabled();
     }
 
     public EditorSession session() {
@@ -256,8 +270,14 @@ public final class EditorMenu extends ChestMenu {
         }, this::reopen);
     }
 
+    /**
+     * Back from the rename screen. Runs a tick later (see {@link RenameMenu}), after vanilla has
+     * finished closing the rename screen. If the player left or another menu took over, the
+     * editing session ends here.
+     */
     private void reopen() {
-        if (player.hasDisconnected()) {
+        boolean free = player.containerMenu == player.inventoryMenu || player.containerMenu instanceof RenameMenu;
+        if (player.hasDisconnected() || !free) {
             EditorLocks.release(level, pos, player);
             return;
         }
@@ -303,6 +323,7 @@ public final class EditorMenu extends ChestMenu {
     private void save() {
         EditorSession session = state.session;
         if (!(level.getBlockEntity(pos) instanceof ShulkerBoxBlockEntity box)
+                || box != state.originalBox
                 || Boxes.color(level.getBlockState(pos).getBlock()).orElse(null) != session.original().color()) {
             player.sendOverlayMessage(Text.tr(player, TextKeys.SAVE_BOX_GONE));
             finish();
@@ -340,7 +361,9 @@ public final class EditorMenu extends ChestMenu {
             return;
         }
 
-        if (!sticker.equals(state.originalSticker)) {
+        // Data this version can't read is kept unless the player replaced or removed the icon.
+        boolean keepUnreadable = state.unreadableSticker && !changes.icon();
+        if (!keepUnreadable && !sticker.equals(state.originalSticker)) {
             StickerData.write(box, sticker);
         }
         if (changes.name()) {
