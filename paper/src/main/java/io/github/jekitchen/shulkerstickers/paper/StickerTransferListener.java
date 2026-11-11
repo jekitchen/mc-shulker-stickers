@@ -1,6 +1,11 @@
 package io.github.jekitchen.shulkerstickers.paper;
 
+import io.github.jekitchen.shulkerstickers.core.Anchor;
 import org.bukkit.Tag;
+import org.bukkit.block.BlockFace;
+import org.bukkit.block.data.Directional;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.util.Vector;
 import org.bukkit.block.TileState;
 import org.bukkit.entity.Item;
 import org.bukkit.event.EventHandler;
@@ -42,6 +47,17 @@ final class StickerTransferListener implements Listener {
             return;
         }
         StickerStore.copy(stack.getPersistentDataContainer(), state.getPersistentDataContainer());
+        StickerStore.read(stack.getPersistentDataContainer())
+                .filter(s -> s.anchor() == Anchor.SIDE)
+                .ifPresent(s -> {
+                    // A side icon goes on the side facing the player who placed the box (PRD §6.1).
+                    var block = event.getBlockPlaced();
+                    BlockFace facing = ((Directional) block.getBlockData()).getFacing();
+                    Vector toPlayer = event.getPlayer().getEyeLocation().toVector()
+                            .subtract(block.getLocation().add(0.5, 0.5, 0.5).toVector());
+                    state.getPersistentDataContainer().set(StickerKeys.FACE, PersistentDataType.STRING,
+                            Faces.sideToward(facing, toPlayer).name());
+                });
         state.update(true, false);
     }
 }

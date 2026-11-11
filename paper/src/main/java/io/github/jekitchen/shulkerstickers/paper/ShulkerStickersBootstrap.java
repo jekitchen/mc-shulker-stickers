@@ -16,6 +16,9 @@ public final class ShulkerStickersBootstrap implements PluginBootstrap {
 
     @Override
     public void bootstrap(BootstrapContext context) {
+        if (Boolean.getBoolean("shulkerstickers.selftest.nodatapack")) {
+            return; // spike control run: proves the datapack is what carries the data
+        }
         context.getLifecycleManager().registerEventHandler(LifecycleEvents.DATAPACK_DISCOVERY.newHandler(event -> {
             try {
                 var uri = Objects.requireNonNull(getClass().getResource("/stickers_datapack")).toURI();

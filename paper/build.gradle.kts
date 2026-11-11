@@ -42,7 +42,7 @@ tasks.processResources {
 }
 
 tasks.runServer {
-    minecraftVersion(property("minecraft_version") as String)
+    minecraftVersion(project.property("minecraft_version") as String)
 }
 
 runPaper.folia.registerTask()
@@ -50,7 +50,7 @@ runPaper.folia.registerTask()
 // Canvas has no downloads API in run-paper, so fetch its jar ourselves.
 val canvasJar = layout.buildDirectory.file("canvas/canvas-build.${property("canvas_build")}.jar")
 val downloadCanvas = tasks.register("downloadCanvas") {
-    val build = property("canvas_build") as String
+    val build = project.property("canvas_build") as String
     val target = canvasJar
     outputs.file(target)
     doLast {
@@ -65,7 +65,22 @@ tasks.register<RunServer>("runCanvas") {
     group = "run paper"
     description = "Runs a Canvas (Folia fork) server with this plugin."
     dependsOn(downloadCanvas)
+    minecraftVersion(project.property("minecraft_version") as String)
     runJar(canvasJar)
     pluginJars(tasks.jar.flatMap { it.archiveFile })
     runDirectory = layout.projectDirectory.dir("run-canvas")
+}
+
+// `-Pselftest`: accept the EULA, run the spike self-test, then shut the server down.
+if (providers.gradleProperty("selftest").isPresent) {
+    tasks.withType<RunServer>().configureEach {
+        jvmArgs(
+            "-Dcom.mojang.eula.agree=true",
+            "-Dshulkerstickers.selftest=true",
+            "-Dshulkerstickers.selftest.stop=true",
+        )
+        if (providers.gradleProperty("nodatapack").isPresent) {
+            jvmArgs("-Dshulkerstickers.selftest.nodatapack=true")
+        }
+    }
 }

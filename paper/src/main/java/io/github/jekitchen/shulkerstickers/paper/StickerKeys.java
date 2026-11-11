@@ -20,6 +20,15 @@ final class StickerKeys {
 
     static final List<NamespacedKey> ALL = List.of(VERSION, ICON_ID, ICON_VISUAL, ANCHOR, ROT);
 
+    /**
+     * Block-only: the exact face of a {@code side} icon on a placed box. Not copied to
+     * items, because it is recomputed on placement. Not in PRD §6.1 yet (PRD gap).
+     */
+    static final NamespacedKey FACE = key("face");
+
+    /** Marks our display entities, so strays can be found and removed. */
+    static final NamespacedKey DISPLAY = key("display");
+
     private StickerKeys() {}
 
     private static NamespacedKey key(String name) {

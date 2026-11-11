@@ -92,4 +92,22 @@ class StickerTransferListenerTest {
         ShulkerBox placed = (ShulkerBox) block.getState();
         assertEquals(Optional.of(ICON), StickerStore.read(placed.getPersistentDataContainer()));
     }
+
+    @Test
+    void placingASideIconPutsItOnTheSideFacingThePlacer() {
+        StickerData side = new StickerData("minecraft:cobblestone", "{}", Anchor.SIDE, 0);
+        ItemStack stack = new ItemStack(Material.BLUE_SHULKER_BOX);
+        stack.editPersistentDataContainer(pdc -> StickerStore.write(pdc, side));
+        Block block = world.getBlockAt(0, 70, 0);
+        BlockState replaced = block.getState();
+        block.setType(Material.BLUE_SHULKER_BOX); // facing UP by default
+        player.teleport(new org.bukkit.Location(world, 0.5, 70, 6)); // south of the box
+
+        listener.onPlace(new BlockPlaceEvent(block, replaced, block.getRelative(BlockFace.DOWN), stack, player,
+                true, EquipmentSlot.HAND));
+
+        ShulkerBox placed = (ShulkerBox) block.getState();
+        assertEquals("SOUTH", placed.getPersistentDataContainer().get(StickerKeys.FACE,
+                org.bukkit.persistence.PersistentDataType.STRING));
+    }
 }
