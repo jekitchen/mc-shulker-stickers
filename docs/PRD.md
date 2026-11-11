@@ -428,6 +428,9 @@ Still needs a vanilla client: the rename screen at zero XP cost, icon orientatio
 - **Name without an icon** gets the clicked face (§6.1).
 - **Blocked-word syntax:** `/regex/` vs whole words (§8).
 - **Paper drop path via a built-in datapack** that overrides the shulker loot tables (§6.2), with the conflict risk noted.
+- **Locked boxes (§9):** vanilla wants the key in the main hand, but the gesture needs an empty main hand. Fabric currently accepts the key in **either** hand; Paper currently **always refuses** locked boxes. Proposed: accept the key in the off-hand on both.
+- **Claims in 0.1 (§7.3, AC-10):** Paper honors claim plugins only through the right-click they already cancel. It doesn't fire fake block-break/place events, because logging plugins would record edits that never happened. So a claim that allows opening containers but not building still lets the editor open. Per-plugin build checks are planned for 0.2. Fabric uses spawn protection, `mayInteract` and Common Protection API.
+- **Apply failure closes the editor:** §5.2 says a failed Save keeps the editor open with the reason, but §9 says a box that's gone or changed closes it. The builds follow §9 for those cases.
 
 ### Closed 11 Nov 2026 (no open questions)
 
