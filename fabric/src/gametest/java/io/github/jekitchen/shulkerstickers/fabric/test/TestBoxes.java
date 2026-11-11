@@ -60,6 +60,12 @@ final class TestBoxes {
         return box;
     }
 
+    /** Places an empty, unlocked, unnamed box with no sticker. */
+    static ShulkerBoxBlockEntity placePlain(GameTestHelper helper, BlockPos rel, BoxColor color, Direction facing) {
+        helper.setBlock(rel, Boxes.block(color).defaultBlockState().setValue(ShulkerBoxBlock.FACING, facing));
+        return helper.getBlockEntity(rel, ShulkerBoxBlockEntity.class);
+    }
+
     static void assertLoaded(GameTestHelper helper, BlockPos rel, BoxColor color, Direction facing) {
         helper.assertBlockState(rel, s -> s.is(Boxes.block(color)), s -> Component.literal("expected " + color + " but was " + s));
         helper.assertBlockProperty(rel, ShulkerBoxBlock.FACING, facing);

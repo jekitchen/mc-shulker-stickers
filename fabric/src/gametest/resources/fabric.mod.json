@@ -8,7 +8,8 @@
     "fabric-gametest": [
       "io.github.jekitchen.shulkerstickers.fabric.test.StickerDataGameTests",
       "io.github.jekitchen.shulkerstickers.fabric.test.RecolorGameTests",
-      "io.github.jekitchen.shulkerstickers.fabric.test.EditorMenuGameTests"
+      "io.github.jekitchen.shulkerstickers.fabric.test.EditorMenuGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.IconGameTests"
     ]
   },
   "depends": {
