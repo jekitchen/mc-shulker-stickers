@@ -430,6 +430,11 @@ Still needs a vanilla client: the rename screen at zero XP cost, icon orientatio
 - **Paper drop path via a built-in datapack** that overrides the shulker loot tables (§6.2), with the conflict risk noted.
 - **Locked boxes (§9):** vanilla wants the key in the main hand, but the gesture needs an empty main hand. Fabric currently accepts the key in **either** hand; Paper currently **always refuses** locked boxes. Proposed: accept the key in the off-hand on both.
 - **Claims in 0.1 (§7.3, AC-10):** Paper honors claim plugins only through the right-click they already cancel. It doesn't fire fake block-break/place events, because logging plugins would record edits that never happened. So a claim that allows opening containers but not building still lets the editor open. Per-plugin build checks are planned for 0.2. Fabric uses spawn protection, `mayInteract` and Common Protection API.
+- **Placed-box data across platforms (§6.1):** Fabric keeps a placed box's sticker in the block entity's `components."minecraft:custom_data".PublicBukkitValues`; Paper keeps it in the block entity's root `PublicBukkitValues`. Items are identical, but a *world* moved between platforms loses (Fabric→Paper) or shows stale (Paper→Fabric) stickers on placed boxes. Options: accept and document it, or add a one-time migration on chunk load on each platform.
+- **Drop copy scope (§6.2):** Fabric copies the box's whole `custom_data` onto the drop (other mods' data survives too); Paper's datapack copies only our keys (vanilla behavior for everything else). Pick one.
+- **`icon.enabled = false` (§8):** Fabric still draws existing icons; Paper hides them. Proposed: hide them (the setting reads as "icons off").
+- **Cosmetics to align:** icon scale (Fabric 0.5, Paper 0.45) and name offset; filler panes and greyed-button items in the editor; `inspect` output layout.
+- **AC-8 on Paper/Canvas:** 1,000 boxes with real display entities cost about 0.68 ms/tick (target 0.5). Being fixed by spawning displays only near players; Fabric (packet-only) is at 0.04 ms.
 - **Apply failure closes the editor:** §5.2 says a failed Save keeps the editor open with the reason, but §9 says a box that's gone or changed closes it. The builds follow §9 for those cases.
 
 ### Closed 11 Nov 2026 (no open questions)
