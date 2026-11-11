@@ -55,6 +55,31 @@ public class StickerDataGameTests {
     }
 
     @GameTest
+    public void dropCopiesOnlyOurKeys(GameTestHelper helper) {
+        ShulkerBoxBlockEntity box = TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
+        StickerData.setNameHidden(box, true);
+        var withOther = box.components().get(DataComponents.CUSTOM_DATA).update(t -> {
+            var bukkit = t.getCompoundOrEmpty("PublicBukkitValues");
+            bukkit.putString("otherplugin:key", "placement id");
+            t.put("PublicBukkitValues", bukkit);
+            t.putString("othermod", "placement id");
+        });
+        box.setComponents(net.minecraft.core.component.DataComponentMap.builder()
+                .addAll(box.components()).set(DataComponents.CUSTOM_DATA, withOther).build());
+
+        helper.getLevel().destroyBlock(helper.absolutePos(BOX), true);
+
+        ItemStack dropped = helper.getEntities(EntityTypes.ITEM, BOX, 2.0).getFirst().getItem();
+        var tag = dropped.get(DataComponents.CUSTOM_DATA).copyTag();
+        var bukkit = tag.getCompoundOrEmpty("PublicBukkitValues");
+        helper.assertValueEqual(StickerData.read(dropped), Optional.of(TestBoxes.STICKER), "sticker on the drop");
+        helper.assertValueEqual(bukkit.getIntOr("shulker_stickers:name_hidden", 0), 1, "name_hidden on the drop");
+        helper.assertTrue(!bukkit.contains("otherplugin:key"), "another plugin's key is not copied (vanilla behavior)");
+        helper.assertTrue(!tag.contains("othermod"), "another mod's data is not copied (vanilla behavior)");
+        helper.succeed();
+    }
+
+    @GameTest
     public void stickerSurvivesBreakAndPlace(GameTestHelper helper) {
         TestBoxes.place(helper, BOX, BoxColor.RED, Direction.NORTH);
 

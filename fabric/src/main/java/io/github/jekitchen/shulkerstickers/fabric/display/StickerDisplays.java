@@ -26,6 +26,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerBlockEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Brightness;
@@ -172,7 +173,7 @@ public final class StickerDisplays {
         Optional<Sticker> sticker = StickerData.read(box);
         Optional<String> name = Optional.ofNullable(box.getCustomName()).map(Component::getString)
                 .filter(n -> config.nameDisplayEnabled() && !StickerData.isNameHidden(box));
-        Optional<ItemStack> icon = sticker.flatMap(s -> Icons.displayStack(s, config, level.registryAccess()));
+        Optional<ItemStack> icon = iconToDraw(sticker, config, level.registryAccess());
         if (icon.isEmpty() && name.isEmpty()) {
             return;
         }
@@ -216,6 +217,14 @@ public final class StickerDisplays {
         Vec3 at = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(FACE_OFFSET));
         new ChunkAttachment(holder, level.getChunkAt(pos), at, false);
         HOLDERS.computeIfAbsent(level, l -> new HashMap<>()).put(pos, holder);
+    }
+
+    /** The icon to draw, if any. {@code icon.enabled = false} hides icons already on boxes too; the data is kept (PRD §8). */
+    public static Optional<ItemStack> iconToDraw(Optional<Sticker> sticker, StickerConfig config, RegistryAccess registries) {
+        if (!config.iconEnabled()) {
+            return Optional.empty();
+        }
+        return sticker.flatMap(s -> Icons.displayStack(s, config, registries));
     }
 
     /**

@@ -35,7 +35,8 @@ public final class ConfigLoader {
             "name", Set.of("edit_enabled", "display_enabled", "cost", "view_range", "max_display_chars", "blocked_words"),
             "display", Set.of("hide_while_open"),
             "help", Set.of("first_place_message"),
-            "allow_adventure_mode", Set.of());
+            "allow_adventure_mode", Set.of(),
+            "protection", Set.of("simulate_place_event"));
 
     private ConfigLoader() {}
 
@@ -79,7 +80,8 @@ public final class ConfigLoader {
                 r.strings("name.blocked_words", d.nameBlockedWords()),
                 r.bool("display.hide_while_open", d.hideWhileOpen()),
                 r.bool("help.first_place_message", d.firstPlaceMessage()),
-                r.bool("allow_adventure_mode", d.allowAdventureMode()));
+                r.bool("allow_adventure_mode", d.allowAdventureMode()),
+                r.bool("protection.simulate_place_event", d.simulatePlaceEvent()));
         return new Result(config, r.warnings);
     }
 
@@ -108,6 +110,7 @@ public final class ConfigLoader {
         section(root, "display").addProperty("hide_while_open", c.hideWhileOpen());
         section(root, "help").addProperty("first_place_message", c.firstPlaceMessage());
         root.addProperty("allow_adventure_mode", c.allowAdventureMode());
+        section(root, "protection").addProperty("simulate_place_event", c.simulatePlaceEvent());
         return new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create().toJson(root) + "\n";
     }
 

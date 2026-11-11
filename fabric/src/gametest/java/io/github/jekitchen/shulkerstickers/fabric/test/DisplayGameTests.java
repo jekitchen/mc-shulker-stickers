@@ -6,6 +6,8 @@ import eu.pb4.polymer.virtualentity.api.elements.VirtualElement;
 import io.github.jekitchen.shulkerstickers.core.Anchor;
 import io.github.jekitchen.shulkerstickers.core.BoxColor;
 import io.github.jekitchen.shulkerstickers.core.Face;
+import io.github.jekitchen.shulkerstickers.core.config.ConfigLoader;
+import io.github.jekitchen.shulkerstickers.core.config.StickerConfig;
 import io.github.jekitchen.shulkerstickers.core.data.Sticker;
 import io.github.jekitchen.shulkerstickers.fabric.Boxes;
 import io.github.jekitchen.shulkerstickers.fabric.PlayerPrefs;
@@ -53,6 +55,19 @@ public class DisplayGameTests {
         List<VirtualElement> elements = elements(helper, BOX);
         helper.assertValueEqual(count(elements, ItemDisplayElement.class), 1L, "icons");
         helper.assertValueEqual(count(elements, TextDisplayElement.class), 1L, "names");
+        helper.succeed();
+    }
+
+    @GameTest
+    public void iconsOffHidesExistingIcons(GameTestHelper helper) {
+        ShulkerBoxBlockEntity box = TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
+        var registries = helper.getLevel().registryAccess();
+        StickerConfig off = ConfigLoader.parse("{\"icon\":{\"enabled\":false}}").config();
+        helper.assertTrue(StickerDisplays.iconToDraw(StickerData.read(box), StickerConfig.DEFAULTS, registries).isPresent(),
+                "icon drawn when enabled");
+        helper.assertTrue(StickerDisplays.iconToDraw(StickerData.read(box), off, registries).isEmpty(),
+                "icon hidden when icons are off");
+        helper.assertValueEqual(StickerData.read(box).flatMap(Sticker::iconId), Optional.of("minecraft:cobblestone"), "data kept");
         helper.succeed();
     }
 

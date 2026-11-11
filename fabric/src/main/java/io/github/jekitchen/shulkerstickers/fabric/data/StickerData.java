@@ -82,12 +82,29 @@ public final class StickerData {
         });
     }
 
-    /** Copies the whole {@code custom_data} component of a block entity onto a dropped item. */
+    /**
+     * Copies our keys ({@link StickerFormat#BOX_KEYS}) from a block entity onto a dropped item,
+     * the same keys Paper's loot tables copy (PRD §6.2). Anything else in the block's
+     * {@code custom_data} behaves as in vanilla, and data already on the item is kept.
+     */
     public static void copyToItem(BlockEntity blockEntity, ItemStack stack) {
-        CustomData data = blockEntity.components().get(DataComponents.CUSTOM_DATA);
-        if (data != null && !data.isEmpty()) {
-            stack.set(DataComponents.CUSTOM_DATA, data);
+        CompoundTag source = bukkitValues(blockEntity.components().get(DataComponents.CUSTOM_DATA));
+        CompoundTag ours = new CompoundTag();
+        for (String key : StickerFormat.BOX_KEYS) {
+            Tag tag = source.get(StickerFormat.fullKey(key));
+            if (tag != null) {
+                ours.put(StickerFormat.fullKey(key), tag.copy());
+            }
         }
+        if (ours.isEmpty()) {
+            return;
+        }
+        CustomData current = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY);
+        stack.set(DataComponents.CUSTOM_DATA, current.update(tag -> {
+            CompoundTag bukkit = tag.getCompoundOrEmpty(StickerFormat.BUKKIT_VALUES);
+            bukkit.merge(ours);
+            tag.put(StickerFormat.BUKKIT_VALUES, bukkit);
+        }));
     }
 
     private static void update(BlockEntity blockEntity, Consumer<CompoundTag> edit) {

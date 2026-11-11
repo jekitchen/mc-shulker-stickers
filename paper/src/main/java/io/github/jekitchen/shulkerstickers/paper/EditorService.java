@@ -117,7 +117,7 @@ final class EditorService implements Listener {
 
     /** Called on the player's (and, in reach, the box's) region thread. */
     void open(Player player, Block block, BlockFace clickedFace) {
-        Optional<String> denial = Access.denial(player, block, settings.config());
+        Optional<String> denial = Access.denial(player, block, settings.config(), plugin.getLogger());
         if (denial.isPresent()) {
             player.sendActionBar(Texts.text(player, NamedTextColor.RED, denial.get()));
             return;
@@ -577,7 +577,8 @@ final class EditorService implements Listener {
                 ? session.iconRotation
                 : IconOrientation.quadrant(player.getYaw());
         SaveRequest request = new SaveRequest(session.editor.original(), session.editor.staged(), changes,
-                session.clickedFace, rotation, hideName, session.boxGone);
+                session.clickedFace, rotation, hideName, session.boxGone,
+                List.of(player.getInventory().getItemInMainHand().clone(), player.getInventory().getItemInOffHand().clone()));
         // Creative players pay nothing, so they're refunded nothing either.
         boolean paid = !Payments.costsFor(player, Costs.forChanges(changes, config)).isEmpty();
         if (paid) {
@@ -660,8 +661,18 @@ final class EditorService implements Listener {
     }
 
     /** Everything a Save needs, captured on the player thread so later clicks can't change it. */
+    /** {@code heldItems}: copies of the player's two hands, taken on the player's thread, for the lock check. */
     record SaveRequest(BoxState original, BoxState staged, Changes changes, BlockFace clickedFace, int rotation,
-            boolean hideName, AtomicBoolean boxGone) {}
+            boolean hideName, AtomicBoolean boxGone, List<ItemStack> heldItems) {
+        SaveRequest {
+            heldItems = List.copyOf(heldItems);
+        }
+
+        SaveRequest(BoxState original, BoxState staged, Changes changes, BlockFace clickedFace, int rotation,
+                boolean hideName, AtomicBoolean boxGone) {
+            this(original, staged, changes, clickedFace, rotation, hideName, boxGone, List.of());
+        }
+    }
 
     /** {@code applied} is what actually changed on the box (a refused color is left out). */
     record SaveResult(boolean saved, String messageKey, Changes applied, boolean keepOpen) {
@@ -686,7 +697,8 @@ final class EditorService implements Listener {
                 || !block.getType().getKey().toString().equals(original.color().itemId())) {
             return new SaveResult(false, TextKeys.SAVE_BOX_GONE, NOTHING);
         }
-        if (box instanceof Lockable lockable && lockable.isLocked()) {
+        if (box instanceof Lockable lockable && lockable.isLocked()
+                && request.heldItems().stream().noneMatch(item -> LockKeys.unlocksWith(box, item, plugin.getLogger()))) {
             return new SaveResult(false, TextKeys.DENY_LOCKED, NOTHING, true);
         }
         BoxState staged = request.staged();

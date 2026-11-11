@@ -20,13 +20,14 @@ public record StickerConfig(
         List<String> nameBlockedWords,
         boolean hideWhileOpen,
         boolean firstPlaceMessage,
-        boolean allowAdventureMode) {
+        boolean allowAdventureMode,
+        boolean simulatePlaceEvent) {
 
     public static final StickerConfig DEFAULTS = new StickerConfig(
             true, true, true, true,
             Cost.NONE, Cost.NONE, Cost.NONE,
-            List.of(), 2048, 32, 16, false, 24, List.of(),
-            true, true, false);
+            List.of(), 2048, 32, 10, false, 24, List.of(),
+            true, true, false, false);
 
     public StickerConfig {
         iconBlocklist = List.copyOf(iconBlocklist);

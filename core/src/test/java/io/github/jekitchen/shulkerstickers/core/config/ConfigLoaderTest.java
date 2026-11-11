@@ -24,7 +24,8 @@ class ConfigLoaderTest {
         assertEquals(List.of(), d.iconBlocklist());
         assertEquals(2048, d.iconMaxDataBytes());
         assertEquals(32, d.iconViewRange());
-        assertEquals(16, d.nameViewRange());
+        assertEquals(10, d.nameViewRange());
+        assertFalse(d.simulatePlaceEvent());
         assertFalse(d.iconFullBright());
         assertEquals(24, d.nameMaxDisplayChars());
         assertEquals(List.of(), d.nameBlockedWords());

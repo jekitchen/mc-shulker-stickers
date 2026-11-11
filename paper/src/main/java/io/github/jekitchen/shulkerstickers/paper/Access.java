@@ -4,12 +4,12 @@ import io.github.jekitchen.shulkerstickers.core.Permissions;
 import io.github.jekitchen.shulkerstickers.core.config.StickerConfig;
 import io.github.jekitchen.shulkerstickers.core.text.TextKeys;
 import java.util.Optional;
+import java.util.logging.Logger;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Block;
-import org.bukkit.block.Lockable;
 import org.bukkit.entity.Player;
 
 /**
@@ -21,7 +21,7 @@ final class Access {
     private Access() {}
 
     /** The translation key of the reason to refuse, or empty if the player may edit. */
-    static Optional<String> denial(Player player, Block block, StickerConfig config) {
+    static Optional<String> denial(Player player, Block block, StickerConfig config, Logger logger) {
         if (player.getGameMode() == GameMode.SPECTATOR
                 || (player.getGameMode() == GameMode.ADVENTURE && !config.allowAdventureMode())) {
             return Optional.of(TextKeys.DENY_ADVENTURE);
@@ -30,9 +30,9 @@ final class Access {
                 && !player.hasPermission(Permissions.NAME)) {
             return Optional.of(TextKeys.DENY_PERMISSION);
         }
-        // A locked box needs its key in the main hand, which the gesture requires to be empty,
-        // so a locked box can't be edited (PRD §9: "the same as opening the box").
-        if (block.getState(false) instanceof Lockable lockable && lockable.isLocked()) {
+        // A locked box needs its key; the gesture needs an empty main hand, so the key counts in
+        // either hand (PRD §9, owner decision 2, the same as Fabric).
+        if (!LockKeys.mayOpen(player, block.getState(false), logger)) {
             return Optional.of(TextKeys.DENY_LOCKED);
         }
         if (inSpawnProtection(player, block)) {

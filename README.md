@@ -76,19 +76,22 @@ Fabric: `config/shulker_stickers.json`. Paper: `plugins/ShulkerStickers/config.j
     "edit_enabled": true,
     "display_enabled": true,
     "cost": { "type": "none" },
-    "view_range": 16,
+    "view_range": 10,
     "max_display_chars": 24,
     "blocked_words": []
   },
   "display": { "hide_while_open": true },
   "help": { "first_place_message": true },
-  "allow_adventure_mode": false
+  "allow_adventure_mode": false,
+  "protection": { "simulate_place_event": false }
 }
 ```
 
 - **Costs** can be `{"type": "none"}`, `{"type": "xp_levels", "amount": 2}` or `{"type": "item", "item": "minecraft:paper", "amount": 1}`. They're charged on Save, only for what changed.
 - **`icon.blocklist`** lists item IDs that can't be used as icons. The item tag `#shulker_stickers:icon_blocklist` works too.
 - **`name.blocked_words`** entries match whole words, ignoring case. Wrap an entry in slashes (`"/b[a4]d/"`) to use a regular expression.
+- **`icon.enabled`** set to `false` also hides icons already on boxes. The data stays, so turning it back on restores them.
+- **`protection.simulate_place_event`** (Paper only, off by default) asks claim plugins we don't support directly by firing a test block-place event. Leave it off if you run a logging plugin such as CoreProtect: it can log the editor as having placed the box, and rolling that player back would remove the box.
 
 ## Building
 

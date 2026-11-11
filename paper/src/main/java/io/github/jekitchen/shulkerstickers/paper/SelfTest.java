@@ -86,6 +86,7 @@ final class SelfTest {
         // AC-1: recolor through all 17 variants.
         Block box = origin.getBlock();
         placeDecoratedBox(box, BlockFace.EAST, ICON);
+        lockKeyTests(box);
         boolean ok = true;
         String why = "";
         for (BoxColor color : BoxColor.values()) {
@@ -336,6 +337,20 @@ final class SelfTest {
             check("a dispense into an occupied space doesn't put the sticker on the box already there", !labelled);
             summary();
         }, 4);
+    }
+
+    /** Owner decision 2: the server's own lock check, reached by reflection, accepts the key. */
+    private void lockKeyTests(Block box) {
+        ItemStack key = new ItemStack(Material.STICK);
+        key.editMeta(meta -> meta.customName(Component.text("key")));
+        ItemStack wrong = new ItemStack(Material.STICK);
+        wrong.editMeta(meta -> meta.customName(Component.text("not the key")));
+        var state = box.getState(false);
+        check("a locked box accepts its key (server lock check by reflection)",
+                LockKeys.unlocksWith(state, key, plugin.getLogger()));
+        check("a locked box refuses the wrong key and an empty hand",
+                !LockKeys.unlocksWith(state, wrong, plugin.getLogger())
+                        && !LockKeys.unlocksWith(state, new ItemStack(Material.AIR), plugin.getLogger()));
     }
 
     private void placeDecoratedBox(Block block, BlockFace facing, Sticker sticker) {
