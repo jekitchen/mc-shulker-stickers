@@ -22,6 +22,13 @@ class StickerCodecTest {
     }
 
     @Test
+    void sharedKeyNamesForNameAndPlayerData() {
+        assertEquals("name_hidden", StickerFormat.NAME_HIDDEN);
+        assertEquals("help_seen", StickerFormat.PLAYER_HELP_SEEN);
+        assertEquals("gesture_off", StickerFormat.PLAYER_GESTURE_OFF);
+    }
+
+    @Test
     void encodeWritesShortKeysAndVersion() {
         Map<String, Object> map = StickerCodec.encode(FULL);
 

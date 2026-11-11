@@ -30,6 +30,17 @@ public final class Faces {
         };
     }
 
+    /**
+     * Side for a {@code side} icon on a box placed by a dispenser (PRD §6.1): the side facing
+     * back toward the dispenser, else north, else the first side.
+     */
+    public static Face dispenserSide(Face facing, Face towardDispenser) {
+        if (isSide(facing, towardDispenser)) {
+            return towardDispenser;
+        }
+        return isSide(facing, Face.NORTH) ? Face.NORTH : sides(facing).getFirst();
+    }
+
     /** The side of a box with this {@code facing} that points most toward the vector (dx, dy, dz). */
     public static Face sideToward(Face facing, double dx, double dy, double dz) {
         Face best = null;

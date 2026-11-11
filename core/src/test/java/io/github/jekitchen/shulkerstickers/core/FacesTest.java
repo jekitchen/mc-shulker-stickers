@@ -50,6 +50,22 @@ class FacesTest {
     }
 
     @Test
+    void dispenserSideFacesBackTowardTheDispenserWhenThatIsASide() {
+        assertEquals(Face.WEST, Faces.dispenserSide(Face.UP, Face.WEST));
+    }
+
+    @Test
+    void dispenserSideFallsBackToNorth() {
+        // Box dispensed eastward: the dispenser is behind its base, not a side.
+        assertEquals(Face.NORTH, Faces.dispenserSide(Face.EAST, Face.WEST));
+    }
+
+    @Test
+    void dispenserSideUsesFirstSideWhenNorthIsNotASide() {
+        assertEquals(Face.DOWN, Faces.dispenserSide(Face.NORTH, Face.SOUTH));
+    }
+
+    @Test
     void normalsPointOutward() {
         assertArrayEquals(new int[] {0, 1, 0}, Face.UP.normal());
         assertArrayEquals(new int[] {0, 0, -1}, Face.NORTH.normal());
