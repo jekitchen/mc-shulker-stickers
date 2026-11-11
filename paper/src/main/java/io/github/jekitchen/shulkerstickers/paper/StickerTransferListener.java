@@ -76,12 +76,8 @@ final class StickerTransferListener implements Listener {
     }
 
     static BlockFace dispenserSide(BlockFace boxFacing, BlockFace towardDispenser) {
-        if (Faces.isSide(boxFacing, towardDispenser)) {
-            return towardDispenser;
-        }
-        return Faces.isSide(boxFacing, BlockFace.NORTH)
-                ? BlockFace.NORTH
-                : Faces.iconFace(Anchor.SIDE, boxFacing, Optional.empty());
+        return Faces.toBukkit(io.github.jekitchen.shulkerstickers.core.Faces.dispenserSide(
+                Faces.toCore(boxFacing), Faces.toCore(towardDispenser)));
     }
 
     /** Region thread. Copies item data to the block and records the side face. */
