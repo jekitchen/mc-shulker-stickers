@@ -8,7 +8,7 @@ Branch: `spike/m0` (not pushed). Worktree: `.claude/worktrees/m0-spike`.
 
 | | Fabric | Paper / Folia / Canvas |
 |---|---|---|
-| Automated tests | 72 GameTests | 98 unit tests (MockBukkit) + 23-check real-server self-test on Paper 248, Folia 6 and Canvas 1010 |
+| Automated tests | 82 GameTests (incl. Fabric Permissions API and Common Protection API run in tests) | 98 unit tests (MockBukkit) + 23-check real-server self-test on Paper 248, Folia 6 and Canvas 1010 |
 | Shared `core` | 97 unit tests | (same) |
 | Editor, recolor, icon, rename, Save/Cancel | Done | Done |
 | Data survives break / pistons / explosions / dispensers | Done | Done (built-in datapack) |
@@ -44,7 +44,7 @@ Start a server with `./gradlew :fabric:runServer`, `:paper:runServer` or `:paper
 6. **Names:** readable under the icon, and centered on the face for a name-only box.
 7. **Hide while open:** the displays disappear while the box is open and come back after it closes.
 8. **Costs, permissions, commands, first-run tip, dispenser, walking out of reach:** see the lists in `docs/spike/fabric-0.1-notes.md` and `docs/spike/paper-0.1-notes.md`.
-9. **Optional Fabric integrations:** LuckPerms through the Fabric Permissions API, and a Common Protection API claim mod. These have only been compiled, never run.
+9. **Optional Fabric integrations with real mods:** LuckPerms and a Common Protection API claim mod (e.g. Flan). Both APIs are exercised in GameTests with fake providers, but not yet with the real mods.
 
 ## Files
 
