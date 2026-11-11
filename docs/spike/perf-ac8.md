@@ -87,3 +87,7 @@ Re-measured 11 Nov 2026 with the same wall ("after" window, 200 ticks). `-Pnearb
 - **Client frame rate:** check it with 1,000 boxes (2,000 displays) in view, on a mid-range client. Lowering `view_range` should help, and the PRD lists this as a risk.
 - **Joining near the wall:** the burst when a player joins or teleports next to the wall. Paper sends 2,000 entity spawns; Polymer sends the equivalent packets.
 - **Chunk-load spikes** (74–98 ms for 1,000 boxes in one go here) in a real world, where the wall is spread over several chunks loading at different times.
+
+## Displays appear up to a second late
+
+Proximity is checked once a second per chunk, so a player flying in fast (elytra, riptide) can see boxes without icons for up to a second before they appear. Checking more often costs more; once a second is the 0.1 trade-off.

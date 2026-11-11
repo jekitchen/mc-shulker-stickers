@@ -193,3 +193,13 @@ A display with no rotation shows its image facing +Z (south), with the image's t
 See `perf-ac8.md`. Displays now exist only while a player is within view range; with no player near, the plugin's cost for 1,000 decorated boxes is about 0.04 ms/tick. The self-test forces "a player is nearby" through `DisplayManager.forceNearby(true)`, and adds a check that nothing is spawned when no player is near while the box stays tracked. A player in view of a whole 1,000-box wall still costs about 0.7 ms (2,000 entities); see `perf-ac8.md` for the options.
 
 Test counts after these fixes: 84 unit tests (MockBukkit and pure). The self-test passes 23/23 on Paper 248, Folia 6 and Canvas 1010.
+
+## Regression-review fixes
+
+- **Payment is taken when Save is pressed**, on the player's thread, before the apply is scheduled. When the result comes back, whatever wasn't applied is refunded: everything if the Save was refused, the color part if the color was refused because the box was open. Before this, the charge came after the apply and only if the player could still pay, so pressing Esc and dropping the cost items, or logging out, made the edit free.
+- **Refunds for players who left** are recorded (`PendingRefunds`, by player UUID) and paid when they next join. They are kept in memory only, so a refund owed across a restart is lost. That needs a logout in the one or two ticks between Save and its result, on a Save that was then refused, so 0.1 accepts it.
+- **After Esc during a Save**, a refusal no longer leaves the session and its lock behind: if the editor isn't open any more, the session ends. A successful Save closes the player's menu only if it is still this editor.
+- **Walking out of reach during a Save** no longer reports "Changes discarded": the Save is already paid for and finishes.
+- **Displays:** a per-chunk index next to the tracked boxes, so each chunk's once-a-second check looks only at its own boxes. A check that finds its chunk unloaded forgets everything in it, and a late refresh for an unloaded chunk forgets the box instead of tracking it (or loading the chunk).
+
+Tests: 98 unit tests (14 new in `RegressionFixesTest`, using item costs as well as XP). Self-test 23/23 on Paper 248, Folia 6 and Canvas 1010.

@@ -81,6 +81,8 @@ class DisplayManager {
     private final Map<BlockKey, Drawn> displays = new ConcurrentHashMap<>();
     private final Map<BlockKey, Parts> tracked = new ConcurrentHashMap<>();
     private final Map<ChunkKey, ScheduledTask> checks = new ConcurrentHashMap<>();
+    /** {@link #tracked}, indexed by chunk, so each chunk's check only looks at its own boxes. */
+    private final Map<ChunkKey, java.util.Set<BlockKey>> byChunk = new ConcurrentHashMap<>();
     /** Self-test and perf-test hook: treat every box as having a player nearby. */
     private volatile boolean forceNearby;
 
@@ -100,7 +102,16 @@ class DisplayManager {
 
     /** Schedules {@link #refresh} on the box's region thread. */
     void refreshLater(Block block) {
-        plugin.getServer().getRegionScheduler().execute(plugin, block.getLocation(), () -> refresh(block));
+        plugin.getServer().getRegionScheduler().execute(plugin, block.getLocation(), () -> refreshIfLoaded(block));
+    }
+
+    /** Region thread. Refreshes only if the box's chunk is still loaded; otherwise forgets it. */
+    private void refreshIfLoaded(Block block) {
+        if (!block.getWorld().isChunkLoaded(block.getX() >> 4, block.getZ() >> 4)) {
+            forget(BlockKey.of(block));
+            return;
+        }
+        refresh(block);
     }
 
     void refreshLater(BlockKey key, long delayTicks) {
@@ -108,7 +119,7 @@ class DisplayManager {
         if (location == null) {
             return;
         }
-        plugin.getServer().getRegionScheduler().runDelayed(plugin, location, t -> refresh(location.getBlock()),
+        plugin.getServer().getRegionScheduler().runDelayed(plugin, location, t -> refreshIfLoaded(location.getBlock()),
                 Math.max(1, delayTicks));
     }
 
@@ -132,12 +143,12 @@ class DisplayManager {
         BlockKey key = BlockKey.of(block);
         removeEntities(key);
         if (!Tag.SHULKER_BOXES.isTagged(block.getType()) || !(block.getState(false) instanceof ShulkerBox box)) {
-            tracked.remove(key);
+            untrack(key);
             return;
         }
         var pdc = box.getPersistentDataContainer();
         if (!StickerStore.hasData(pdc) && box.customName() == null) {
-            tracked.remove(key);
+            untrack(key);
             return;
         }
         StickerConfig config = settings.config();
@@ -150,7 +161,7 @@ class DisplayManager {
                 .filter(n -> !StickerStore.isNameHidden(pdc))
                 .map(n -> PlainTextComponentSerializer.plainText().serialize(n))
                 .filter(n -> !n.isBlank());
-        tracked.put(key, new Parts(icon.isPresent(), name.isPresent()));
+        track(key, new Parts(icon.isPresent(), name.isPresent()));
         ensureCheck(key);
         if (config.hideWhileOpen() && !box.getInventory().getViewers().isEmpty()) {
             displays.put(key, new Drawn(List.of(), false, false, true));
@@ -246,13 +257,22 @@ class DisplayManager {
     }
 
     private void checkChunk(ChunkKey chunk, ScheduledTask task) {
-        List<BlockKey> keys = tracked.keySet().stream()
-                .filter(k -> k.world().equals(chunk.world()) && k.chunkX() == chunk.x() && k.chunkZ() == chunk.z())
-                .toList();
+        List<BlockKey> keys = List.copyOf(byChunk.getOrDefault(chunk, java.util.Set.of()));
         World world = Bukkit.getWorld(chunk.world());
-        if (keys.isEmpty() || world == null || !world.isChunkLoaded(chunk.x(), chunk.z())) {
-            checks.remove(chunk, task);
-            cancelQuietly(task);
+        if (world == null || !world.isChunkLoaded(chunk.x(), chunk.z())) {
+            // Unloaded without (or after) its unload event: forget everything in it.
+            removeChunk(chunk.world(), chunk.x(), chunk.z());
+            if (task != null) {
+                checks.remove(chunk, task);
+                cancelQuietly(task);
+            }
+            return;
+        }
+        if (keys.isEmpty()) {
+            if (task != null) {
+                checks.remove(chunk, task);
+                cancelQuietly(task);
+            }
             return;
         }
         StickerConfig config = settings.config();
@@ -281,10 +301,13 @@ class DisplayManager {
     }
 
     private static void cancelQuietly(ScheduledTask task) {
+        if (task == null) {
+            return;
+        }
         try {
             task.cancel();
-        } catch (UnsupportedOperationException e) {
-            // MockBukkit doesn't implement cancel; real servers do.
+        } catch (RuntimeException e) {
+            // MockBukkit doesn't implement cancel (its exception isn't an UnsupportedOperationException); real servers do.
         }
     }
 
@@ -304,7 +327,20 @@ class DisplayManager {
     /** Region thread only. Removes the displays and stops tracking the box (it was broken or moved). */
     void forget(BlockKey key) {
         removeEntities(key);
+        untrack(key);
+    }
+
+    private void track(BlockKey key, Parts parts) {
+        tracked.put(key, parts);
+        byChunk.computeIfAbsent(ChunkKey.of(key), c -> ConcurrentHashMap.newKeySet()).add(key);
+    }
+
+    private void untrack(BlockKey key) {
         tracked.remove(key);
+        byChunk.computeIfPresent(ChunkKey.of(key), (c, keys) -> {
+            keys.remove(key);
+            return keys.isEmpty() ? null : keys;
+        });
     }
 
     private void removeEntities(BlockKey key) {
@@ -316,12 +352,13 @@ class DisplayManager {
 
     /** Region thread only. Forgets and removes every display in a chunk. */
     void removeChunk(UUID world, int chunkX, int chunkZ) {
-        java.util.Set<BlockKey> keys = new java.util.HashSet<>(displays.keySet());
-        keys.addAll(tracked.keySet());
-        keys.stream()
-                .filter(k -> k.world().equals(world) && k.chunkX() == chunkX && k.chunkZ() == chunkZ)
-                .forEach(this::forget);
-        ScheduledTask task = checks.remove(new ChunkKey(world, chunkX, chunkZ));
+        ChunkKey chunk = new ChunkKey(world, chunkX, chunkZ);
+        java.util.Set<BlockKey> keys = new java.util.HashSet<>(byChunk.getOrDefault(chunk, java.util.Set.of()));
+        // Displays are only drawn for tracked boxes, but sweep them too in case of a race.
+        displays.keySet().stream().filter(k -> ChunkKey.of(k).equals(chunk)).forEach(keys::add);
+        keys.forEach(this::forget);
+        byChunk.remove(chunk);
+        ScheduledTask task = checks.remove(chunk);
         if (task != null) {
             cancelQuietly(task);
         }
@@ -341,6 +378,7 @@ class DisplayManager {
         }
         displays.clear();
         tracked.clear();
+        byChunk.clear();
         if (FOLIA) {
             return;
         }
@@ -382,6 +420,16 @@ class DisplayManager {
 
     int count() {
         return displays.values().stream().mapToInt(d -> d.entities().size()).sum();
+    }
+
+    /** Test hook: the tracked boxes of one chunk, from the per-chunk index. */
+    java.util.Set<BlockKey> trackedInChunk(UUID world, int chunkX, int chunkZ) {
+        return java.util.Set.copyOf(byChunk.getOrDefault(new ChunkKey(world, chunkX, chunkZ), java.util.Set.of()));
+    }
+
+    /** Test hook: runs one proximity check of a chunk now, on the calling thread. */
+    void checkNow(UUID world, int chunkX, int chunkZ) {
+        checkChunk(new ChunkKey(world, chunkX, chunkZ), null);
     }
 
     int trackedCount() {

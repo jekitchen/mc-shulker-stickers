@@ -53,6 +53,7 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.inventory.PrepareAnvilEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -104,6 +105,7 @@ final class EditorService implements Listener {
     private final DisplayManager displays;
     private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
     private final Map<BlockKey, UUID> locks = new ConcurrentHashMap<>();
+    private final PendingRefunds payments = new PendingRefunds();
 
     EditorService(Plugin plugin, Settings settings, DisplayManager displays) {
         this.plugin = plugin;
@@ -449,6 +451,22 @@ final class EditorService implements Listener {
         }
     }
 
+    /** Pays refunds owed from a Save that finished after the player left. */
+    @EventHandler
+    void onJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        List<Cost> owed = payments.take(player.getUniqueId());
+        if (!owed.isEmpty()) {
+            player.getScheduler().run(plugin, t -> Payments.refund(player, owed),
+                    () -> payments.owe(player.getUniqueId(), owed));
+        }
+    }
+
+    /** Test hook. */
+    void oweRefund(UUID player, List<Cost> costs) {
+        payments.owe(player, costs);
+    }
+
     @EventHandler
     void onQuit(PlayerQuitEvent event) {
         endFor(event.getPlayer(), false);
@@ -490,7 +508,8 @@ final class EditorService implements Listener {
                 cancelQuietly(task);
                 return;
             }
-            if (!inReach(player, session.box)) {
+            // A Save in flight is already paid for and will finish; don't report it as discarded.
+            if (!session.saving && !inReach(player, session.box)) {
                 clearRenameView(session);
                 session.closingOnPurpose = true;
                 player.closeInventory();
@@ -523,9 +542,11 @@ final class EditorService implements Listener {
     // ---- saving (PRD §6.3) ---------------------------------------------------------------
 
     /**
-     * Player thread: check, then apply on the box's region thread, then charge on the player
-     * thread for what was actually applied. Save is one-shot: the staged state is captured
-     * now, and further presses are ignored until it finishes.
+     * Player thread: check and take payment now, apply on the box's region thread, then refund
+     * on the player thread whatever wasn't applied. Paying up front means nothing the player
+     * does between the click and the apply (Esc, dropping the items, logging out) can make
+     * the edit free. Save is one-shot: the staged state is captured now, and further presses
+     * are ignored until it finishes.
      */
     private void save(Player player, Session session) {
         if (session.saving) {
@@ -557,11 +578,31 @@ final class EditorService implements Listener {
                 : IconOrientation.quadrant(player.getYaw());
         SaveRequest request = new SaveRequest(session.editor.original(), session.editor.staged(), changes,
                 session.clickedFace, rotation, hideName, session.boxGone);
+        // Creative players pay nothing, so they're refunded nothing either.
+        boolean paid = !Payments.costsFor(player, Costs.forChanges(changes, config)).isEmpty();
+        if (paid) {
+            Payments.charge(player, Costs.forChanges(changes, config));
+        }
+        UUID playerId = player.getUniqueId();
         plugin.getServer().getRegionScheduler().execute(plugin, location, () -> {
             SaveResult result = apply(location.getBlock(), request);
-            // If the player has logged out by now, nothing is charged (see notes).
-            player.getScheduler().run(plugin, t -> finishSave(player, session, config, result), null);
+            List<Cost> refund = paid ? Costs.forChanges(unapplied(changes, result), config) : List.of();
+            Runnable gone = () -> payments.owe(playerId, refund);
+            var task = player.getScheduler().run(plugin, t -> finishSave(player, session, result, refund), gone);
+            if (task == null) {
+                gone.run(); // the player left before the apply finished
+            }
         });
+    }
+
+    /** The parts of a Save that were paid for but not applied. */
+    private static Changes unapplied(Changes changes, SaveResult result) {
+        if (!result.saved()) {
+            return changes;
+        }
+        Changes applied = result.applied();
+        return new Changes(changes.color() && !applied.color(), changes.icon() && !applied.icon(),
+                changes.name() && !applied.name());
     }
 
     /** Everything that can be decided on the player thread; a translated reason to refuse. */
@@ -590,30 +631,27 @@ final class EditorService implements Listener {
         return Optional.empty();
     }
 
-    /** Player thread. Charges only for the parts that were applied, at the prices when Save was pressed. */
-    private void finishSave(Player player, Session session, StickerConfig config, SaveResult result) {
-        if (result.keepOpen()) {
+    /** Player thread. Refunds what wasn't applied (paid at the prices when Save was pressed). */
+    private void finishSave(Player player, Session session, SaveResult result, List<Cost> refund) {
+        Payments.refund(player, refund);
+        // Esc during a save closes the menu but leaves the session waiting for this result.
+        boolean stillOpen = editorSession(player.getUniqueId(), player.getOpenInventory()) == session;
+        if (result.keepOpen() && stillOpen) {
             // e.g. the box was locked meanwhile: say why and let the player try again (PRD §6.3 step 1).
             session.saving = false;
             player.sendActionBar(Texts.text(player, NamedTextColor.RED, result.messageKey()));
-            if (editorSession(player.getUniqueId(), player.getOpenInventory()) == session) {
-                render(session.editorInventory, session, player);
-            }
+            render(session.editorInventory, session, player);
             return;
         }
         session.closingOnPurpose = true;
         end(session);
-        player.closeInventory();
+        if (stillOpen) {
+            player.closeInventory();
+        }
         if (!result.saved()) {
-            // The box was broken, moved, recolored or locked meanwhile: the editor closes (PRD §9).
+            // The box was broken, moved, recolored or locked meanwhile (PRD §9).
             player.sendActionBar(Texts.text(player, NamedTextColor.RED, result.messageKey()));
             return;
-        }
-        List<Cost> costs = Payments.costsFor(player, Costs.forChanges(result.applied(), config));
-        if (Payments.canPay(player, costs)) {
-            Payments.charge(player, costs);
-        } else {
-            plugin.getLogger().warning(player.getName() + " could no longer pay for a saved edit; not charged");
         }
         if (result.messageKey() != null) {
             player.sendActionBar(Texts.text(player, NamedTextColor.YELLOW, result.messageKey()));
