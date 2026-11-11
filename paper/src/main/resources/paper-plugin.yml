@@ -7,3 +7,19 @@ folia-supported: true
 description: Recolor, label and rename placed shulker boxes. Works with vanilla clients.
 authors: [jekitchen]
 website: https://github.com/jekitchen/mc-shulker-stickers
+permissions:
+  shulker_stickers.color:
+    description: Recolor shulker boxes in the Sticker editor
+    default: true
+  shulker_stickers.icon:
+    description: Put icons on shulker boxes
+    default: true
+  shulker_stickers.name:
+    description: Rename shulker boxes in the Sticker editor
+    default: true
+  shulker_stickers.name.display:
+    description: Names you set are shown on boxes
+    default: true
+  shulker_stickers.admin:
+    description: Inspect, clear and reload (/shulkerstickers inspect|clear|reload)
+    default: op

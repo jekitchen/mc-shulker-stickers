@@ -12,6 +12,8 @@ import org.bukkit.event.block.BlockPistonExtendEvent;
 import org.bukkit.event.block.BlockPistonRetractEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
 import com.destroystokyo.paper.event.block.BlockDestroyEvent;
@@ -23,12 +25,35 @@ import java.util.List;
  */
 final class DisplayListener implements Listener {
 
+    /** Roughly how long the lid takes to close, so displays come back once it's shut. */
+    private static final long LID_CLOSE_TICKS = 10;
+
     private final org.bukkit.plugin.Plugin plugin;
+    private final Settings settings;
     private final DisplayManager displays;
 
-    DisplayListener(org.bukkit.plugin.Plugin plugin, DisplayManager displays) {
+    DisplayListener(org.bukkit.plugin.Plugin plugin, Settings settings, DisplayManager displays) {
         this.plugin = plugin;
+        this.settings = settings;
         this.displays = displays;
+    }
+
+    /** The lid rises when a box opens, so its displays are hidden while it's open (PRD §5.5). */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    void onOpen(InventoryOpenEvent event) {
+        if (settings.config().hideWhileOpen() && event.getInventory().getHolder(false) instanceof ShulkerBox box) {
+            Block block = box.getBlock();
+            plugin.getServer().getRegionScheduler().execute(plugin, block.getLocation(),
+                    () -> displays.remove(BlockKey.of(block)));
+        }
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    void onClose(InventoryCloseEvent event) {
+        if (event.getInventory().getHolder(false) instanceof ShulkerBox box) {
+            // refresh() draws nothing while anyone still has the box open.
+            displays.refreshLater(BlockKey.of(box.getBlock()), LID_CLOSE_TICKS);
+        }
     }
 
     @EventHandler

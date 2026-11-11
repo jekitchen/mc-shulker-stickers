@@ -2,44 +2,54 @@ package io.github.jekitchen.shulkerstickers.paper;
 
 import io.github.jekitchen.shulkerstickers.core.Anchor;
 import io.github.jekitchen.shulkerstickers.core.BoxColor;
+import io.github.jekitchen.shulkerstickers.core.Face;
+import io.github.jekitchen.shulkerstickers.core.data.Sticker;
+import io.github.jekitchen.shulkerstickers.core.text.TextKeys;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
 import org.bukkit.Tag;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.block.Dispenser;
 import org.bukkit.block.ShulkerBox;
 import org.bukkit.block.data.Directional;
 import org.bukkit.block.data.type.Observer;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Item;
+import org.bukkit.entity.ItemDisplay;
+import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.LeatherArmorMeta;
 import org.bukkit.plugin.Plugin;
 
 /**
- * Spike-only checks on a real server (Paper, Folia, Canvas), enabled with
+ * Checks on a real server (Paper, Folia, Canvas), enabled with
  * {@code -Dshulkerstickers.selftest=true}. Every world change runs on the region
  * scheduler, so a thread-check error on Folia/Canvas is itself a failure signal.
  * Results are logged as {@code SELFTEST PASS|FAIL <name>} and a final summary line.
  */
 final class SelfTest {
 
-    private static final StickerData ICON = new StickerData("minecraft:cobblestone", "{}", Anchor.LID, 0);
+    private static final Sticker ICON = new Sticker(
+            Optional.of("minecraft:cobblestone"), Optional.empty(), Anchor.LID, 0, Optional.empty());
 
     private final Plugin plugin;
+    private final Settings settings;
     private final DisplayManager displays;
     private final AtomicInteger passed = new AtomicInteger();
     private final AtomicInteger failed = new AtomicInteger();
 
-    SelfTest(Plugin plugin, DisplayManager displays) {
+    SelfTest(Plugin plugin, Settings settings, DisplayManager displays) {
         this.plugin = plugin;
+        this.settings = settings;
         this.displays = displays;
     }
 
@@ -56,7 +66,7 @@ final class SelfTest {
                     try {
                         run(world, origin);
                     } catch (Throwable e) {
-                        fail("selftest crashed: " + e);
+                        check("selftest crashed: " + e, false);
                         plugin.getLogger().log(java.util.logging.Level.SEVERE, "SELFTEST crash", e);
                         summary();
                     }
@@ -66,12 +76,14 @@ final class SelfTest {
     /** Region thread. */
     private void run(World world, Location origin) {
         check("datapack tag shulker_stickers:icon_blocklist is visible to plugins",
-                Bukkit.getTag(Tag.REGISTRY_ITEMS, new NamespacedKey("shulker_stickers", "icon_blocklist"),
-                        Material.class) != null);
+                Bukkit.getTag(Tag.REGISTRY_ITEMS, IconItems.BLOCKLIST_TAG, Material.class) != null);
+        check("bundled translations load (en_us)", Texts.has(TextKeys.EDITOR_SAVE)
+                && "Save".equals(Texts.plain(Bukkit.getConsoleSender(), TextKeys.EDITOR_SAVE)));
+        iconVisualTests();
 
         // AC-1: recolor through all 17 variants.
         Block box = origin.getBlock();
-        placeDecoratedBox(box, BlockFace.EAST);
+        placeDecoratedBox(box, BlockFace.EAST, ICON);
         boolean ok = true;
         String why = "";
         for (BoxColor color : BoxColor.values()) {
@@ -106,7 +118,6 @@ final class SelfTest {
             BoxRecolorer.recolor(box, BoxColor.RED);
             watchObserver(origin, observerBlock, pulsed, 6, () -> {
                 check("AC-16 recolor does not pulse an observer", !pulsed.get());
-                // Control: a normal block change with physics on must pulse it.
                 AtomicBoolean controlPulsed = new AtomicBoolean(false);
                 Directional data = (Directional) Material.BLUE_SHULKER_BOX.createBlockData();
                 data.setFacing(BlockFace.EAST);
@@ -117,6 +128,29 @@ final class SelfTest {
                 });
             });
         }, 5);
+    }
+
+    /** Icon visual properties go through Minecraft's codec and back (PRD §5.3). */
+    private void iconVisualTests() {
+        ItemStack helmet = new ItemStack(Material.LEATHER_HELMET);
+        helmet.editMeta(LeatherArmorMeta.class, meta -> meta.setColor(Color.fromRGB(0xFF0000)));
+        helmet.editMeta(meta -> meta.lore(java.util.List.of(Component.text("secret"))));
+        IconItems.Captured captured = IconItems.capture(helmet);
+        plugin.getLogger().info("SELFTEST INFO dyed helmet icon_visual = " + captured.visual().orElse("<none>"));
+        check("red-dyed helmet keeps only the dyed color",
+                captured.id().equals("minecraft:leather_helmet")
+                        && captured.visual().filter(v -> v.contains("minecraft:dyed_color") && !v.contains("lore")).isPresent());
+
+        Sticker sticker = new Sticker(Optional.of(captured.id()), captured.visual(), Anchor.LID, 0, Optional.empty());
+        Optional<ItemStack> drawn = IconItems.render(sticker, settings.config());
+        check("stored icon rebuilds into the same dyed item",
+                drawn.isPresent() && drawn.get().getType() == Material.LEATHER_HELMET
+                        && drawn.get().getItemMeta() instanceof LeatherArmorMeta m
+                        && m.getColor().asRGB() == 0xFF0000);
+
+        Sticker junk = new Sticker(Optional.of("minecraft:stone"), Optional.of("{\"minecraft:dyed_color\":\"red\"}"),
+                Anchor.LID, 0, Optional.empty());
+        check("unreadable icon visuals draw nothing instead of crashing", IconItems.render(junk, settings.config()).isEmpty());
     }
 
     private void watchObserver(Location at, Block observerBlock, AtomicBoolean pulsed, int ticks, Runnable then) {
@@ -139,15 +173,19 @@ final class SelfTest {
     /** Sticker data must survive drops (PRD §6.2 first row). */
     private void dropTests(Location origin) {
         Block box = origin.clone().add(3, 0, 0).getBlock();
-        placeDecoratedBox(box, BlockFace.UP);
+        Sticker side = new Sticker(ICON.iconId(), ICON.iconVisual(), Anchor.SIDE, 0, Optional.of(Face.NORTH));
+        placeDecoratedBox(box, BlockFace.UP, side);
+        ShulkerBox hiddenState = (ShulkerBox) box.getState();
+        StickerStore.setNameHidden(hiddenState.getPersistentDataContainer(), true);
+        hiddenState.update(true, false);
         ItemStack drop = box.getDrops().stream()
                 .filter(i -> Tag.SHULKER_BOXES.isTagged(i.getType()))
                 .findFirst().orElse(null);
-        check("block PDC reaches the drop via the datapack loot table (getDrops)",
-                drop != null && StickerStore.read(drop.getPersistentDataContainer()).equals(Optional.of(ICON)));
+        check("block PDC reaches the drop via the datapack loot table (getDrops), incl. face and name_hidden",
+                drop != null && StickerStore.read(drop.getPersistentDataContainer()).equals(Optional.of(side))
+                        && StickerStore.isNameHidden(drop.getPersistentDataContainer()));
         check("drop keeps contents and name via vanilla loot (getDrops)",
-                drop != null && drop.getItemMeta() != null
-                        && drop.getItemMeta().hasCustomName());
+                drop != null && drop.getItemMeta() != null && drop.getItemMeta().hasCustomName());
         box.breakNaturally();
         Bukkit.getRegionScheduler().runDelayed(plugin, origin, t -> {
             Optional<ItemStack> dropped = box.getWorld()
@@ -156,29 +194,81 @@ final class SelfTest {
                     .filter(i -> Tag.SHULKER_BOXES.isTagged(i.getType()))
                     .findFirst();
             check("breakNaturally drop carries the sticker",
-                    dropped.isPresent() && StickerStore.read(dropped.get().getPersistentDataContainer())
-                            .equals(Optional.of(ICON)));
-            box.getWorld().getNearbyEntities(box.getLocation(), 3, 3, 3, e -> e instanceof Item)
-                    .forEach(Entity::remove);
-            displayTests(origin);
+                    dropped.isPresent() && StickerStore.read(dropped.get().getPersistentDataContainer()).equals(Optional.of(side)));
+            box.getWorld().getNearbyEntities(box.getLocation(), 3, 3, 3, e -> e instanceof Item).forEach(Entity::remove);
+            dispenserTest(origin);
         }, 3);
+    }
+
+    /** A dispenser-placed box gets the item's sticker, on the side facing the dispenser (PRD §6.1). */
+    private void dispenserTest(Location origin) {
+        Block dispenserBlock = origin.clone().add(0, 0, 4).getBlock();
+        Directional data = (Directional) Material.DISPENSER.createBlockData();
+        data.setFacing(BlockFace.EAST);
+        dispenserBlock.setBlockData(data, false);
+        Block target = dispenserBlock.getRelative(BlockFace.EAST);
+        target.setType(Material.AIR, false);
+        ItemStack stack = new ItemStack(Material.SHULKER_BOX);
+        Sticker side = new Sticker(ICON.iconId(), ICON.iconVisual(), Anchor.SIDE, 0, Optional.empty());
+        stack.editPersistentDataContainer(pdc -> StickerStore.write(pdc, side));
+        Dispenser dispenser = (Dispenser) dispenserBlock.getState();
+        dispenser.getSnapshotInventory().addItem(stack);
+        dispenser.update(true, false);
+        boolean dispensed = ((Dispenser) dispenserBlock.getState()).dispense();
+        Bukkit.getRegionScheduler().runDelayed(plugin, origin, t -> {
+            Optional<Sticker> placed = target.getState(false) instanceof ShulkerBox box
+                    ? StickerStore.read(box.getPersistentDataContainer())
+                    : Optional.empty();
+            BlockFace facing = target.getBlockData() instanceof Directional d ? d.getFacing() : null;
+            plugin.getLogger().info("SELFTEST INFO dispenser: dispensed=" + dispensed + " placed=" + target.getType()
+                    + " facing=" + facing + " sticker=" + placed);
+            check("dispenser-placed box gets the sticker on a side facing the dispenser or north",
+                    placed.isPresent() && placed.get().face().isPresent()
+                            && (placed.get().face().get() == Face.WEST || placed.get().face().get() == Face.NORTH));
+            displayTests(origin);
+        }, 4);
     }
 
     private void displayTests(Location origin) {
         Block box = origin.clone().add(6, 0, 0).getBlock();
-        placeDecoratedBox(box, BlockFace.UP);
+        placeDecoratedBox(box, BlockFace.UP, ICON);
         displays.refresh(box);
         var spawned = displays.displaysAt(box);
         check("display entities spawn from a region thread (icon + name)", spawned.size() == 2
                 && spawned.stream().allMatch(e -> e instanceof Display && e.isValid()));
-        check("display entities are never saved (persistent=false)",
-                spawned.stream().noneMatch(Entity::isPersistent));
+        check("display entities are never saved (persistent=false)", spawned.stream().noneMatch(Entity::isPersistent));
         displays.remove(BlockKey.of(box));
         check("display entities removed with the box", spawned.stream().noneMatch(Entity::isValid));
+
+        // A hidden name isn't drawn; the icon still is.
+        ShulkerBox state = (ShulkerBox) box.getState();
+        StickerStore.setNameHidden(state.getPersistentDataContainer(), true);
+        state.update(true, false);
+        displays.refresh(box);
+        var hidden = displays.displaysAt(box);
+        check("a name marked name_hidden is not drawn", hidden.size() == 1 && hidden.getFirst() instanceof ItemDisplay);
+        displays.remove(BlockKey.of(box));
+
+        // A name with no sticker data goes on the lid.
+        Block nameOnly = origin.clone().add(9, 0, 0).getBlock();
+        Directional upright = (Directional) Material.SHULKER_BOX.createBlockData();
+        upright.setFacing(BlockFace.NORTH);
+        nameOnly.setBlockData(upright, false);
+        ShulkerBox named = (ShulkerBox) nameOnly.getState();
+        named.customName(Component.text("A very long box name that is far over the limit"));
+        named.update(true, false);
+        displays.refresh(nameOnly);
+        var text = displays.displaysAt(nameOnly);
+        check("a name without sticker data is drawn on the lid, truncated",
+                text.size() == 1 && text.getFirst() instanceof TextDisplay td
+                        && td.getLocation().getZ() < nameOnly.getZ()
+                        && net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText()
+                                .serialize(td.text()).endsWith("…"));
+        displays.remove(BlockKey.of(nameOnly));
         summary();
     }
 
-    private void placeDecoratedBox(Block block, BlockFace facing) {
+    private void placeDecoratedBox(Block block, BlockFace facing, Sticker sticker) {
         Directional data = (Directional) Material.SHULKER_BOX.createBlockData();
         data.setFacing(facing);
         block.setBlockData(data, false);
@@ -188,17 +278,13 @@ final class SelfTest {
         }
         state.customName(Component.text("Ores"));
         state.setLock("key");
-        StickerStore.write(state.getPersistentDataContainer(), ICON);
+        StickerStore.write(state.getPersistentDataContainer(), sticker);
         state.update(true, false);
     }
 
     private void check(String name, boolean ok) {
         (ok ? passed : failed).incrementAndGet();
         plugin.getLogger().info("SELFTEST " + (ok ? "PASS " : "FAIL ") + name);
-    }
-
-    private void fail(String name) {
-        check(name, false);
     }
 
     private void summary() {

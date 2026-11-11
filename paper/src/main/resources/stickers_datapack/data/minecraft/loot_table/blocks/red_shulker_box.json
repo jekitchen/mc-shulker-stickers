@@ -24,7 +24,9 @@
                 { "source": "PublicBukkitValues.\"shulker_stickers:icon_id\"", "target": "PublicBukkitValues.\"shulker_stickers:icon_id\"", "op": "replace" },
                 { "source": "PublicBukkitValues.\"shulker_stickers:icon_visual\"", "target": "PublicBukkitValues.\"shulker_stickers:icon_visual\"", "op": "replace" },
                 { "source": "PublicBukkitValues.\"shulker_stickers:anchor\"", "target": "PublicBukkitValues.\"shulker_stickers:anchor\"", "op": "replace" },
-                { "source": "PublicBukkitValues.\"shulker_stickers:rot\"", "target": "PublicBukkitValues.\"shulker_stickers:rot\"", "op": "replace" }
+                { "source": "PublicBukkitValues.\"shulker_stickers:rot\"", "target": "PublicBukkitValues.\"shulker_stickers:rot\"", "op": "replace" },
+                { "source": "PublicBukkitValues.\"shulker_stickers:face\"", "target": "PublicBukkitValues.\"shulker_stickers:face\"", "op": "replace" },
+                { "source": "PublicBukkitValues.\"shulker_stickers:name_hidden\"", "target": "PublicBukkitValues.\"shulker_stickers:name_hidden\"", "op": "replace" }
               ]
             }
           ],

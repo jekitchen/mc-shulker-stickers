@@ -22,7 +22,7 @@ import org.mockbukkit.mockbukkit.world.WorldMock;
 /** AC-1: a recolor keeps all 27 slots, the name, the lock, the icon and facing. */
 class BoxRecolorerTest {
 
-    private static final StickerData ICON = new StickerData("minecraft:cobblestone", "{}", Anchor.SIDE, 0);
+    private static final io.github.jekitchen.shulkerstickers.core.data.Sticker ICON = new io.github.jekitchen.shulkerstickers.core.data.Sticker(Optional.of("minecraft:cobblestone"), Optional.empty(), Anchor.SIDE, 0, Optional.of(io.github.jekitchen.shulkerstickers.core.Face.NORTH));
 
     private WorldMock world;
 

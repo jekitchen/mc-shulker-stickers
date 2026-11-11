@@ -39,10 +39,19 @@ class EditorFlowTest {
         server = MockBukkit.mock();
         Plugin plugin = MockBukkit.createMockPlugin();
         world = server.addSimpleWorld("world");
+        // The plugin file declares these on a real server.
+        for (String node : java.util.List.of(io.github.jekitchen.shulkerstickers.core.Permissions.COLOR,
+                io.github.jekitchen.shulkerstickers.core.Permissions.ICON,
+                io.github.jekitchen.shulkerstickers.core.Permissions.NAME,
+                io.github.jekitchen.shulkerstickers.core.Permissions.NAME_DISPLAY)) {
+            server.getPluginManager().addPermission(
+                    new org.bukkit.permissions.Permission(node, org.bukkit.permissions.PermissionDefault.TRUE));
+        }
         player = server.addPlayer();
         box = world.getBlockAt(0, 70, 0);
         box.setType(Material.SHULKER_BOX);
-        editor = new EditorService(plugin, new DisplayManager(plugin));
+        Settings settings = Settings.of(io.github.jekitchen.shulkerstickers.core.config.StickerConfig.DEFAULTS);
+        editor = new EditorService(plugin, settings, new DisplayManager(plugin, settings));
         server.getPluginManager().registerEvents(new GestureListener(editor), plugin);
         server.getPluginManager().registerEvents(editor, plugin);
     }
@@ -172,7 +181,7 @@ class EditorFlowTest {
                 InventoryAction.PICKUP_ALL));
 
         server.getPluginManager().callEvent(new InventoryClickEvent(view, InventoryType.SlotType.CONTAINER,
-                EditorLayout.SAVE, ClickType.LEFT, InventoryAction.PICKUP_ALL));
+                io.github.jekitchen.shulkerstickers.core.editor.EditorLayout.SAVE, ClickType.LEFT, InventoryAction.PICKUP_ALL));
         server.getScheduler().performTicks(3);
 
         assertEquals(Material.RED_SHULKER_BOX, box.getType());
