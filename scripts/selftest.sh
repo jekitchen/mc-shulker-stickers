@@ -4,7 +4,7 @@
 #   scripts/selftest.sh runServer      # Paper
 #   scripts/selftest.sh runFolia       # Folia
 #   scripts/selftest.sh runCanvas      # Canvas
-#   scripts/selftest.sh runClaims      # Paper with WorldEdit, WorldGuard and GriefPrevention
+#   scripts/selftest.sh runClaims      # Paper with WorldEdit, WorldGuard, GriefPrevention and BentoBox
 #
 # Extra arguments go to Gradle (for example -Pnodatapack, or -Pserverport=25575 to run next to
 # another server). SELFTEST_TIMEOUT sets the limit in seconds (default 900). The server log is

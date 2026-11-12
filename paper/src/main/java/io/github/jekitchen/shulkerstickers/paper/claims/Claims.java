@@ -17,8 +17,8 @@ import org.bukkit.plugin.PluginManager;
  *
  * <ol>
  *   <li>Every claim plugin we support that is installed is asked directly: GriefPrevention,
- *       WorldGuard, Lands and Towny. An integration that throws refuses (fail closed) and logs
- *       once.
+ *       WorldGuard, Lands, Towny, BentoBox and PlotSquared. An integration that throws refuses
+ *       (fail closed) and logs once.
  *   <li>With {@code protection.simulate_place_event} on, a {@link ClaimTestPlaceEvent} is fired
  *       for every other plugin. Off by default: logging plugins such as CoreProtect would record
  *       a placement that a rollback would undo by deleting the box.
@@ -51,6 +51,8 @@ public final class Claims {
         add(found, pm, plugin.getLogger(), "WorldGuard", p -> new WorldGuardCheck());
         add(found, pm, plugin.getLogger(), "Lands", p -> new LandsCheck(plugin));
         add(found, pm, plugin.getLogger(), "Towny", p -> new TownyCheck());
+        add(found, pm, plugin.getLogger(), "BentoBox", p -> new BentoBoxCheck());
+        add(found, pm, plugin.getLogger(), "PlotSquared", p -> new PlotSquaredCheck());
         if (!found.isEmpty()) {
             plugin.getLogger().info("Claim checks: " + found.stream().map(ClaimCheck::plugin).toList());
         }
