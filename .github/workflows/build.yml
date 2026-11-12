@@ -45,6 +45,32 @@ jobs:
             **/build/reports/tests/
             **/build/test-results/
 
+  # The Fabric release jar on a real dedicated server with only Fabric API installed.
+  fabric-smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Smoke test the Fabric jar
+        run: scripts/fabric-smoke.sh
+
+      - name: Upload server log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fabric-smoke-log
+          path: build/fabric-smoke/server.log
+          if-no-files-found: ignore
+
   # The Paper plugin's built-in checks on real servers (Paper, Folia, Canvas, and Paper with
   # real WorldGuard and GriefPrevention). Each server starts, runs the checks and stops.
   selftest:
