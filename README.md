@@ -118,7 +118,8 @@ Two scripts run the real-server checks the way CI does, and fail if anything fai
 | Script | What it checks |
 |---|---|
 | `scripts/selftest.sh runServer` (or `runFolia`, `runCanvas`, `runClaims`) | The Paper plugin's built-in checks on that server |
-| `scripts/fabric-smoke.sh` | The Fabric release jar on a real dedicated server with only Fabric API installed |
+| `scripts/paper-uninstall.sh` | The self-test, then the same world on Paper without the plugin (AC-6) |
+| `scripts/fabric-smoke.sh` | The Fabric release jar on a real dedicated server with only Fabric API installed: a restart with a saved decorated box, uninstall (AC-6), and next to Ultimate Shulker Trims |
 
 Releases are described in [`docs/release/README.md`](docs/release/README.md), and changes in [`CHANGELOG.md`](CHANGELOG.md).
 

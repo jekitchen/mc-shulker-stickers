@@ -17,3 +17,4 @@ Known limitations:
 
 - Alpha: the gestures, editor and displays have been tested on real servers but not yet with a wide range of clients.
 - Paper: with a player in view of 1,000 decorated boxes at once, displays cost about 0.7 ms/tick. The fix comes in the 0.2 performance pass.
+- A box broken while the mod or plugin is uninstalled drops with its contents, name and color, but without its sticker (vanilla doesn't copy it). Boxes left in place keep their stickers, which come back on reinstall.

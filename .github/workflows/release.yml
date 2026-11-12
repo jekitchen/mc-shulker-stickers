@@ -46,7 +46,7 @@ jobs:
 
       - name: Self-test on Paper, Folia and Canvas
         run: |
-          scripts/selftest.sh runServer
+          scripts/paper-uninstall.sh
           scripts/selftest.sh runFolia
           scripts/selftest.sh runCanvas
 

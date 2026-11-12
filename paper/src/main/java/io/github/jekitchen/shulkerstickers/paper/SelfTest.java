@@ -718,8 +718,23 @@ final class SelfTest {
                         shown.size() == 2 && shown.stream().allMatch(Entity::isValid));
             }
             displays.removeAll();
+            uninstallWitness(origin);
             summary();
         }, 3);
+    }
+
+    /**
+     * Left in the world for {@code scripts/paper-uninstall.sh} (AC-6): a full, named, locked,
+     * stickered box at 2 250 2 on a stone block, with its displays up when the server stops.
+     * Same chunk as the origin, so the same region thread owns it on Folia and Canvas.
+     */
+    private void uninstallWitness(Location origin) {
+        Block box = origin.clone().add(-6, 0, -6).getBlock();
+        box.getRelative(BlockFace.DOWN).setType(Material.STONE, false);
+        placeDecoratedBox(box, BlockFace.UP, ICON);
+        displays.forceNearby(true);
+        displays.refresh(box);
+        check("uninstall witness at 2 250 2 has its icon and name drawn", displays.displaysAt(box).size() == 2);
     }
 
     /** Paper with claim plugins installed ({@code runClaims}). */

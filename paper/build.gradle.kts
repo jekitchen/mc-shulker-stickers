@@ -111,6 +111,16 @@ tasks.register<RunServer>("runClaims") {
     jvmArgs("-Dshulkerstickers.selftest.claims=GriefPrevention,WorldGuard")
 }
 
+// Paper on the same world as runServer, without this plugin: the uninstall check (AC-6,
+// scripts/paper-uninstall.sh).
+tasks.register<RunServer>("runWithoutPlugin") {
+    group = "run paper"
+    description = "Runs runServer's world on Paper with this plugin removed."
+    minecraftVersion(project.property("minecraft_version") as String)
+    runDirectory = layout.projectDirectory.dir("run")
+    jvmArgs("-Dcom.mojang.eula.agree=true")
+}
+
 // `-Pserverport=N`: listen on another port, so two servers can run side by side.
 providers.gradleProperty("serverport").orNull?.let { port ->
     tasks.withType<RunServer>().configureEach { args("--port", port) }
