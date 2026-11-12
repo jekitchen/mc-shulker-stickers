@@ -8,6 +8,12 @@ Organize your shulker boxes at a glance. Sneak and right-click a placed shulker 
 
 Changes are staged in the editor, and **Save** applies them all at once; **Cancel** or **Esc** discards them.
 
+![A wall of shulker boxes, each a different color with an item icon and a name on its front](docs/images/screenshots/wall.png)
+
+| The Sticker editor | Icons on lids and sides |
+|---|---|
+| ![The editor: a row of colors, then "Use off-hand item", remove icon and rename](docs/images/screenshots/editor.png) | ![Boxes on the ground with icons on their lids, one turned, and one on a side](docs/images/screenshots/floor.png) |
+
 Everything runs on the server. Players need **no client mod** to see icons and names or to use the editor. Removing the mod or plugin leaves your boxes, their contents, names and colors intact, and leaves no stray entities in the world.
 
 > **Status:** in development, not released yet. See [`docs/PRD.md`](docs/PRD.md) for the full product spec.

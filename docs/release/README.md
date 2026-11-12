@@ -74,6 +74,6 @@ Canvas isn't a Modrinth or Hangar loader tag. Mention it in the description inst
 
 **Icon:** `docs/images/icon-512.png` (redraw with `docs/images/make_icon.py`).
 
-**Gallery:** needs screenshots from a vanilla client: the editor, a wall of decorated boxes, and an icon on a side face.
+**Gallery:** `docs/images/screenshots/` (`wall.png`, `editor.png`, `floor.png`, 1600x900). A real 26.3 client takes them: `./gradlew :fabric:runClientGameTest` (`StoreScreenshots`) rebuilds the scenes and replaces the files.
 
 **License:** MIT. Source: https://github.com/jekitchen/mc-shulker-stickers
