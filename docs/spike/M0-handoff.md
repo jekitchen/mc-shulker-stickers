@@ -49,6 +49,8 @@ Start a server with `./gradlew :fabric:runServer`, `:paper:runServer` or `:paper
 | 3 | Icon looks: dyed armor, glint, a head, a banner; a name-only box, a long name, a hidden name | 5, 6 |
 | 4 | A box locked with a stick (the key is in the chest next to it), and a plain box to decorate | 1–3, 10 |
 
+**Already seen with a real client (Fabric, 12 Nov).** `./gradlew :fabric:runClientGameTest` runs `StoreScreenshots` in a real 26.3 client (singleplayer, so the integrated server runs the mod). It opened the editor with a real sneak + right-click and a diamond in the off-hand (check 1, without the ghost-block part). It also drew south-facing lid icons, up-facing lid icons with rotations 0 and 1, and a north side icon, all upright and not mirrored (part of check 4). Names were readable under the icons (check 6). See `docs/images/screenshots/`. Paper, and everything else below, still needs a person.
+
 1. **Gesture:** sneak + right-click a placed box with an empty main hand opens "Edit: …". With a block in the off-hand, no block is placed and no ghost block shows.
 2. **Menu safety:** try shift-click, number keys, F, double-click, drag, Q and clicking outside the window. Nothing leaves the editor and no ghost items appear.
 3. **Rename screen:** type a name and click the result slot at 0 XP. It must work at repair cost 0, the paper must never reach the inventory, and Esc must return to a working editor.

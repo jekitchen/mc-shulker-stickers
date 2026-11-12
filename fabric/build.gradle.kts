@@ -30,7 +30,9 @@ fabricApi {
     configureTests {
         createSourceSet = true
         modId = "shulker_stickers_test"
-        enableClientGameTests = false
+        // `./gradlew :fabric:runClientGameTest`: a real client takes the store screenshots
+        // (StoreScreenshots). Not part of `build`, because it needs a display.
+        enableClientGameTests = true
         eula = true
     }
 }

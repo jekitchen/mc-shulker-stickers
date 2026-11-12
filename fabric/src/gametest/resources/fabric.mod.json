@@ -26,6 +26,9 @@
       "io.github.jekitchen.shulkerstickers.fabric.test.ReloadGameTests",
       "io.github.jekitchen.shulkerstickers.fabric.test.SpawnProtectionGameTests",
       "io.github.jekitchen.shulkerstickers.fabric.test.EdgeCaseGameTests"
+    ],
+    "fabric-client-gametest": [
+      "io.github.jekitchen.shulkerstickers.fabric.test.StoreScreenshots"
     ]
   },
   "mixins": ["shulker_stickers_test.mixins.json"],
