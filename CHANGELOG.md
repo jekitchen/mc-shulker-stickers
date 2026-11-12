@@ -7,6 +7,7 @@ Each release has a Fabric jar and a Paper jar (the Paper jar also runs on Folia 
 - **Icons move with the lid:** when a box opens, the icon and name on its lid rise and turn with the lid, the same way vanilla moves the lid, instead of disappearing. Icons on the sides are still hidden while the box is open. Spectators opening a box don't move the lid in vanilla, so they don't move the icons either.
   - Known limitation (all platforms): the icons follow vanilla's lid. A resource pack that animates shulker boxes differently can't be seen by the server, so for players using one the lid moves away from the icons. Fresh Animations is one example: it gives the lid a float while it's open.
   - Known limitation (Paper): when another plugin opens a lid through the API (`Lidded#open()`) rather than a player opening the box, there's no event to follow, so the icons stay where they are.
+- **More claim plugins on Paper:** BentoBox (BSkyBlock, AcidIsland, AOneBlock and its other game modes) and PlotSquared are asked directly when installed. On BentoBox islands, editing a box needs the island's place-blocks and break-blocks permissions for your rank. On PlotSquared, it needs build rights on the plot; roads, unclaimed plots and other players' plots need PlotSquared's admin build permissions.
 
 ## 0.1.0-alpha.1 (not yet released)
 

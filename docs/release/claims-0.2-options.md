@@ -1,4 +1,8 @@
-# 0.2: which further claim plugins to support on Paper (for the owner to decide)
+# 0.2: which further claim plugins to support on Paper
+
+**Decided 12 Nov 2026:** the owner picked the recommendation, BentoBox and PlotSquared. Both are built (`BentoBoxCheck`, `PlotSquaredCheck`). `runClaims` installs BentoBox. PlotSquared's plugin jar is only on SpigotMC, which scripts can't download, so its rules are covered by `PlotSquaredSpotTest` and need one manual run with the real plugin.
+
+The notes below are what the decision was based on.
 
 The PRD's 0.2 row says "further claims integrations". 0.1 already asks GriefPrevention, WorldGuard, Lands and Towny directly. It also has an opt-in test block-place event for every other claim plugin (`protection.simulate_place_event`). Lock plugins that cancel the right-click, such as Bolt, are respected already: the gesture skips a click another plugin denied, and `EditorFlowTest#aProtectionPluginDenialIsHonored` covers that.
 
