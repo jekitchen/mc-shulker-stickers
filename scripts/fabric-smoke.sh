@@ -64,50 +64,65 @@ simulation-distance=4
 EOF
 
 # Paper's layout for a box with our sticker: the keys sit in the root PublicBukkitValues.
-box='minecraft:shulker_box{PublicBukkitValues:{"shulker_stickers:v":1,"shulker_stickers:icon_id":"minecraft:diamond","shulker_stickers:anchor":"lid","shulker_stickers:rot":0}}'
+# It also holds 5 diamonds, to check contents survive the uninstall phase.
+box='minecraft:red_shulker_box{Items:[{Slot:0b,id:"minecraft:diamond",count:5}],PublicBukkitValues:{"shulker_stickers:v":1,"shulker_stickers:icon_id":"minecraft:diamond","shulker_stickers:anchor":"lid","shulker_stickers:rot":0}}'
 
 seen() { grep -qE "$1" "$log" 2>/dev/null; }
 
-# Writes console commands to the server's stdin once it is ready, then sends `stop` and exits,
-# which closes stdin. Every wait is bounded, so a broken server still gets `stop`.
-feed() {
-    local i=0
+# Writes the given console commands to the server's stdin once it is ready, waits for the
+# answer pattern, then sends `stop` and exits, which closes stdin. Every wait is bounded, so a
+# broken server still gets `stop`.
+feed() { # answer-pattern command...
+    local answer="$1" i=0
+    shift
     until seen 'Done \([0-9.]+s\)!'; do
         i=$((i + 1)); [ "$i" -gt "$limit" ] && { echo stop; return; }; sleep 1
     done
-    echo "shulkerstickers help"
-    echo "shulkerstickers reload"
-    echo "forceload add 0 0"
-    echo "setblock 1 -50 1 $box"
-    echo "data get block 1 -50 1 components"
+    printf '%s\n' "$@"
     i=0
-    until seen 'has the following block data'; do
+    until seen "$answer"; do
         i=$((i + 1)); [ "$i" -gt 60 ] && break; sleep 1
     done
+    sleep 2
     echo stop
 }
 
-echo "Starting Fabric $loader on $mc with $(basename "$jar") and Fabric API $fabric_api"
-: > "$log"
-( cd "$server" && feed | java -Xmx2G -jar "$cache/fabric-server-$mc-$loader.jar" nogui ) >> "$log" 2>&1 &
-run_pid=$!
-
-# The whole run is bounded too: the startup limit plus two minutes for the commands and shutdown.
-waited=0
-while kill -0 "$run_pid" 2>/dev/null; do
-    if [ "$waited" -gt $((limit + 120)) ]; then
-        pkill -f "fabric-server-$mc-$loader.jar" 2>/dev/null || true
-        fail "the server did not stop"
-    fi
-    sleep 1; waited=$((waited + 1))
-done
-seen 'Done \([0-9.]+s\)!' || fail "the server did not finish starting"
-seen 'has the following block data' || fail "no answer to /data get"
+# Runs one server session with the given commands; the log goes to $log.
+run_server() { # answer-pattern command...
+    : > "$log"
+    ( cd "$server" && feed "$@" | java -Xmx2G -jar "$cache/fabric-server-$mc-$loader.jar" nogui ) >> "$log" 2>&1 &
+    local run_pid=$! waited=0
+    # Bounded: the startup limit plus two minutes for the commands and shutdown.
+    while kill -0 "$run_pid" 2>/dev/null; do
+        if [ "$waited" -gt $((limit + 120)) ]; then
+            pkill -f "fabric-server-$mc-$loader.jar" 2>/dev/null || true
+            fail "the server did not stop"
+        fi
+        sleep 1; waited=$((waited + 1))
+    done
+    seen 'Done \([0-9.]+s\)!' || fail "the server did not finish starting"
+    seen "$1" || fail "no answer to the last command"
+}
 
 checks=0
 expect() { # pattern message
     if grep -qE "$1" "$log"; then echo "PASS $2"; checks=$((checks + 1)); else fail "$2"; fi
 }
+no_errors() {
+    if grep -nE '/ERROR\]|Exception|Mixin apply.*failed|Critical injection failure' "$log" | grep -v 'Ambiguity' ; then
+        fail "errors in the server log (above)"
+    fi
+    echo "PASS no errors in the server log"; checks=$((checks + 1))
+}
+
+# Phase 1: with the mod.
+echo "Starting Fabric $loader on $mc with $(basename "$jar") and Fabric API $fabric_api"
+run_server 'has the following block data' \
+    "shulkerstickers help" \
+    "shulkerstickers reload" \
+    "forceload add 0 0" \
+    "setblock 1 -50 1 $box" \
+    "data get block 1 -50 1 components"
 expect 'Shulker Stickers loaded' "the mod starts from the release jar"
 expect 'polymer-virtual-entity' "bundled Polymer loads"
 expect 'Shulker Stickers: sneak and right-click' "/shulkerstickers help answers in English"
@@ -115,9 +130,26 @@ expect 'Shulker Stickers config reloaded' "/shulkerstickers reload works"
 expect 'custom_data.*shulker_stickers:icon_id.*minecraft:diamond' "a Paper-saved box keeps its sticker (load mixin ran)"
 [ -f "$server/config/shulker_stickers.json" ] || fail "no default config written"
 echo "PASS default config written"; checks=$((checks + 1))
+no_errors
+cp "$log" "$dir/server-with-mod.log"
 
-if grep -nE '/ERROR\]|Exception|Mixin apply.*failed|Critical injection failure' "$log" | grep -v 'Ambiguity' ; then
-    fail "errors in the server log (above)"
-fi
-echo "PASS no errors in the server log"; checks=$((checks + 1))
+# Phase 2 (AC-6): the same world with the mod removed.
+echo "Restarting without Shulker Stickers (uninstall check)"
+rm -f "$server/mods/$(basename "$jar")"
+run_server 'END-OF-CHECKS' \
+    "execute if block 1 -50 1 minecraft:red_shulker_box" \
+    "data get block 1 -50 1 Items" \
+    "data get block 1 -50 1 components" \
+    "execute if entity @e[type=minecraft:item_display]" \
+    "execute if entity @e[type=minecraft:text_display]" \
+    "say END-OF-CHECKS"
+grep -q 'Shulker Stickers loaded' "$log" && fail "the mod was still loaded"
+expect 'Test passed' "the box is still a red shulker box"
+expect 'has the following block data: \[\{[^]]*(count: 5[^]]*"minecraft:diamond"|"minecraft:diamond"[^]]*count: 5)' "its 5 diamonds are still inside"
+expect 'custom_data.*shulker_stickers:icon_id' "its sticker data is kept for a reinstall"
+[ "$(grep -c 'Test failed' "$log")" -eq 2 ] || fail "display entities were left in the world"
+echo "PASS no display entities left in the world"; checks=$((checks + 1))
+no_errors
+cp "$log" "$dir/server-uninstalled.log"
+
 echo "Fabric smoke test: all $checks checks passed"
