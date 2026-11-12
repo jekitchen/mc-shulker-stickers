@@ -85,6 +85,34 @@ public class DisplayGameTests {
         });
     }
 
+    /**
+     * PRD §6.2 "/clone, structure blocks, WorldEdit": a copy keeps its sticker and is drawn right
+     * away. (Copies create the box first and load its data after, so the load event alone would
+     * see an empty box.)
+     */
+    @GameTest
+    public void clonedBoxKeepsItsStickerAndIsDrawn(GameTestHelper helper) {
+        TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
+        ServerLevel level = helper.getLevel();
+        BlockPos from = helper.absolutePos(BOX);
+        BlockPos to = helper.absolutePos(BOX.east(2));
+        String command = "clone %d %d %d %d %d %d %d %d %d".formatted(
+                from.getX(), from.getY(), from.getZ(), from.getX(), from.getY(), from.getZ(), to.getX(), to.getY(), to.getZ());
+        try {
+            level.getServer().getCommands().getDispatcher().execute(command,
+                    level.getServer().createCommandSourceStack().withLevel(level).withSuppressedOutput());
+        } catch (com.mojang.brigadier.exceptions.CommandSyntaxException e) {
+            throw new IllegalStateException(e);
+        }
+        helper.assertTrue(level.getBlockEntity(to) instanceof ShulkerBoxBlockEntity copy
+                && StickerData.read(copy).equals(Optional.of(TestBoxes.STICKER)), "the copy keeps the sticker");
+        helper.runAfterDelay(1, () -> {
+            List<VirtualElement> elements = elements(helper, BOX.east(2));
+            helper.assertValueEqual(count(elements, ItemDisplayElement.class), 1L, "icons on the copy");
+            helper.succeed();
+        });
+    }
+
     @GameTest
     public void iconAndNameAreDrawn(GameTestHelper helper) {
         TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
