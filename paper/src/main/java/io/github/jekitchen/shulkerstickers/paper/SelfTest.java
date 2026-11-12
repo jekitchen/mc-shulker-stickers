@@ -19,6 +19,7 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.Dispenser;
 import org.bukkit.block.ShulkerBox;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Directional;
 import org.bukkit.block.data.type.Observer;
 import org.bukkit.entity.Display;
@@ -241,6 +242,11 @@ final class SelfTest {
             check("dispenser-placed box gets the sticker on a side facing the dispenser or north",
                     placed.isPresent() && placed.get().face().isPresent()
                             && (placed.get().face().get() == Face.WEST || placed.get().face().get() == Face.NORTH));
+            // §6.2 "Dispenser places box: displays attached". The sticker has an icon and no name.
+            var shown = displays.displaysAt(target);
+            check("dispenser-placed box gets its icon display" + (shown.size() == 1 ? "" : " (got " + shown + ")"),
+                    shown.size() == 1 && shown.getFirst() instanceof ItemDisplay && shown.getFirst().isValid());
+            displays.forget(BlockKey.of(target));
             displayTests(origin);
         }, 4);
     }
@@ -342,8 +348,473 @@ final class SelfTest {
             boolean labelled = target.getState(false) instanceof ShulkerBox box
                     && StickerStore.hasData(box.getPersistentDataContainer());
             check("a dispense into an occupied space doesn't put the sticker on the box already there", !labelled);
-            summary();
+            hopperRecolorTest(origin);
         }, 4);
+    }
+
+    // ---- release-gate and persistence-matrix checks, below the origin in the same chunk -------
+
+    /** 27 different items, so a duplicated or lost stack shows up by type. */
+    private static final Material[] DISTINCT = {
+        Material.DIAMOND, Material.EMERALD, Material.GOLD_INGOT, Material.IRON_INGOT, Material.COAL,
+        Material.REDSTONE, Material.LAPIS_LAZULI, Material.QUARTZ, Material.STICK, Material.STONE,
+        Material.DIRT, Material.COBBLESTONE, Material.OAK_LOG, Material.SAND, Material.GRAVEL,
+        Material.CLAY_BALL, Material.BRICK, Material.BONE, Material.STRING, Material.FEATHER,
+        Material.FLINT, Material.LEATHER, Material.PAPER, Material.BOOK, Material.WHEAT,
+        Material.APPLE, Material.BREAD,
+    };
+
+    private static final int AC2_TICKS = 100;
+
+    /**
+     * AC-2 (release gate): recolors while a hopper pulls from a box, and while another feeds
+     * into one, neither duplicate nor lose items. The boxes are recolored on every tick, so
+     * every tick a hopper moves an item has a recolor too; the item totals are checked each tick.
+     */
+    private void hopperRecolorTest(Location origin) {
+        Block pullBox = origin.clone().add(-5, -10, -5).getBlock();
+        Block pullHopper = pullBox.getRelative(BlockFace.DOWN);
+        Block chest = pullHopper.getRelative(BlockFace.EAST);
+        Block feedBox = origin.clone().add(-5, -10, 1).getBlock();
+        Block feedHopper = feedBox.getRelative(BlockFace.UP);
+        for (Block b : java.util.List.of(pullBox, pullHopper, chest, feedBox, feedHopper)) {
+            b.setType(Material.AIR, false);
+        }
+        removeItemsNear(pullBox, 4);
+        removeItemsNear(feedBox, 4);
+        java.util.Set<java.util.UUID> oldItems = itemIds(pullBox, 16);
+
+        // A box full of distinct stacks over a hopper that empties into a chest.
+        ItemStack[] full = new ItemStack[27];
+        for (int slot = 0; slot < 27; slot++) {
+            full[slot] = new ItemStack(DISTINCT[slot], slot + 1);
+        }
+        placeStickeredBox(pullBox, full);
+        placeHopper(pullHopper, BlockFace.EAST);
+        chest.setType(Material.CHEST, false);
+        // A hopper above a box with room, holding five distinct stacks.
+        placeStickeredBox(feedBox, new ItemStack(Material.NETHERITE_SCRAP, 3));
+        placeHopper(feedHopper, BlockFace.DOWN,
+                new ItemStack(Material.AMETHYST_SHARD, 4), new ItemStack(Material.COPPER_INGOT, 5),
+                new ItemStack(Material.PRISMARINE_SHARD, 6), new ItemStack(Material.BLAZE_ROD, 7),
+                new ItemStack(Material.SLIME_BALL, 8));
+        Block[] pullSide = {pullBox, pullHopper, chest};
+        Block[] feedSide = {feedBox, feedHopper};
+        java.util.Map<Material, Integer> pullExpected = count(pullSide);
+        java.util.Map<Material, Integer> feedExpected = count(feedSide);
+        int feedStart = total(feedHopper);
+
+        Bukkit.getRegionScheduler().runAtFixedRate(plugin, origin, new java.util.function.Consumer<>() {
+            int tick;
+            int pulled;
+            int fedLeft = feedStart;
+            int pullTransfers;
+            int feedTransfers;
+            String pullMismatch;
+            String feedMismatch;
+
+            @Override
+            public void accept(io.papermc.paper.threadedregions.scheduler.ScheduledTask task) {
+                // What the hoppers did since the last run of this task...
+                var pullNow = count(pullSide);
+                var feedNow = count(feedSide);
+                if (pullMismatch == null && !pullNow.equals(pullExpected)) {
+                    pullMismatch = "tick " + tick + ": " + difference(pullExpected, pullNow);
+                }
+                if (feedMismatch == null && !feedNow.equals(feedExpected)) {
+                    feedMismatch = "tick " + tick + ": " + difference(feedExpected, feedNow);
+                }
+                int pulledNow = total(pullHopper) + total(chest);
+                if (pulledNow != pulled) {
+                    pullTransfers++;
+                    pulled = pulledNow;
+                }
+                int fedLeftNow = total(feedHopper);
+                if (fedLeftNow != fedLeft) {
+                    feedTransfers++;
+                    fedLeft = fedLeftNow;
+                }
+                // ...then recolor both boxes, every tick, to a color they don't have.
+                BoxColor color = BoxColor.values()[(tick + 1) % BoxColor.values().length];
+                BoxRecolorer.recolor(pullBox, color);
+                BoxRecolorer.recolor(feedBox, color);
+                if (++tick < AC2_TICKS) {
+                    return;
+                }
+                task.cancel();
+                var pullEnd = count(pullSide);
+                var feedEnd = count(feedSide);
+                boolean noDrops = newItemsNear(pullBox, 4, oldItems).isEmpty() && newItemsNear(feedBox, 4, oldItems).isEmpty();
+                plugin.getLogger().info("SELFTEST INFO AC-2: " + AC2_TICKS + " recolors; hopper pulled " + pulled
+                        + " items in " + pullTransfers + " transfers, fed " + (feedStart - fedLeft) + " items in "
+                        + feedTransfers + " transfers");
+                boolean pullOk = pullMismatch == null && pullEnd.equals(pullExpected);
+                check("AC-2 recolor while a hopper pulls from the box: no item duplicated or lost" + (pullOk ? ""
+                                : " (first at " + pullMismatch + "; at the end: " + difference(pullExpected, pullEnd) + ")"),
+                        pullOk);
+                boolean feedOk = feedMismatch == null && feedEnd.equals(feedExpected);
+                check("AC-2 recolor while a hopper feeds the box: no item duplicated or lost" + (feedOk ? ""
+                                : " (first at " + feedMismatch + "; at the end: " + difference(feedExpected, feedEnd) + ")"),
+                        feedOk);
+                check("AC-2 the hoppers really moved items during the recolors (pulled " + pullTransfers
+                        + "x, fed " + feedTransfers + "x)", pullTransfers >= 5 && feedTransfers >= 5);
+                check("AC-2 no item entities dropped, and the box keeps its sticker",
+                        noDrops && StickerStore.read(((ShulkerBox) pullBox.getState()).getPersistentDataContainer())
+                                .equals(Optional.of(ICON)));
+                comparatorTest(origin);
+            }
+        }, 1, 1);
+    }
+
+    /**
+     * AC-16: a comparator reading a box shows the same, correct signal before and after a
+     * recolor, and doesn't flicker in between.
+     */
+    private void comparatorTest(Location origin) {
+        Block box = origin.clone().add(-5, -15, -5).getBlock();
+        Block comparator = box.getRelative(BlockFace.EAST);
+        Block dust = comparator.getRelative(BlockFace.EAST);
+        comparator.setType(Material.AIR, false);
+        dust.setType(Material.AIR, false);
+        comparator.getRelative(BlockFace.DOWN).setType(Material.STONE, false);
+        dust.getRelative(BlockFace.DOWN).setType(Material.STONE, false);
+        placeDecoratedBox(box, BlockFace.UP, ICON);
+        int expected = comparatorSignal(((ShulkerBox) box.getState()).getInventory());
+        org.bukkit.block.data.type.Comparator data =
+                (org.bukkit.block.data.type.Comparator) Material.COMPARATOR.createBlockData();
+        data.setFacing(BlockFace.WEST); // the input side: the box
+        comparator.setBlockData(data, true);
+        dust.setType(Material.REDSTONE_WIRE, true);
+        Bukkit.getRegionScheduler().runDelayed(plugin, origin, t1 -> {
+            int before = power(dust);
+            check("AC-16 comparator reads the box before a recolor (" + before + ", expected " + expected + ")",
+                    before == expected);
+            BoxRecolorer.recolor(box, BoxColor.PURPLE);
+            java.util.Set<Integer> seen = new java.util.TreeSet<>();
+            seen.add(power(dust));
+            Bukkit.getRegionScheduler().runAtFixedRate(plugin, origin, new java.util.function.Consumer<>() {
+                int left = 20;
+
+                @Override
+                public void accept(io.papermc.paper.threadedregions.scheduler.ScheduledTask task) {
+                    seen.add(power(dust));
+                    if (--left > 0) {
+                        return;
+                    }
+                    task.cancel();
+                    check("AC-16 comparator reads the right signal after a recolor, with no flicker (seen "
+                            + seen + ", expected " + expected + ")",
+                            seen.equals(java.util.Set.of(expected)) && box.getType() == Material.PURPLE_SHULKER_BOX);
+                    comparatorUpdateProbe(origin, box, dust);
+                }
+            }, 1, 1);
+        }, 10);
+    }
+
+    /**
+     * Not a check: finds out whether a recolor itself refreshes comparators. The comparator and
+     * dust are put back without physics, so the comparator hasn't read the box yet (0); a recolor
+     * then either makes it read the box or leaves it at 0.
+     */
+    private void comparatorUpdateProbe(Location origin, Block box, Block dust) {
+        Block comparator = box.getRelative(BlockFace.EAST);
+        BlockData comparatorData = comparator.getBlockData();
+        comparator.setType(Material.AIR, false);
+        dust.setType(Material.AIR, false);
+        comparator.setBlockData(comparatorData, false);
+        dust.setType(Material.REDSTONE_WIRE, false);
+        int fresh = comparatorSignal(((ShulkerBox) box.getState()).getInventory());
+        Bukkit.getRegionScheduler().runDelayed(plugin, origin, t1 -> {
+            int stale = power(dust);
+            BoxRecolorer.recolor(box, BoxColor.ORANGE);
+            Bukkit.getRegionScheduler().runDelayed(plugin, origin, t2 -> {
+                int afterRecolor = power(dust);
+                String verdict = stale == fresh ? "inconclusive (the comparator read the box when placed)"
+                        : afterRecolor == fresh ? "yes" : afterRecolor == stale ? "no" : "unexpected";
+                plugin.getLogger().info("SELFTEST INFO recolor refreshes comparators: " + verdict + " (dust "
+                        + stale + " before the recolor, " + afterRecolor + " after; the box gives " + fresh + ")");
+                pistonTest(origin);
+            }, 6);
+        }, 6);
+    }
+
+    /** What a comparator reads from a container (vanilla's getRedstoneSignalFromContainer). */
+    private static int comparatorSignal(org.bukkit.inventory.Inventory inventory) {
+        float fill = 0;
+        for (ItemStack stack : inventory.getContents()) {
+            if (stack != null && !stack.isEmpty()) {
+                fill += stack.getAmount() / (float) Math.min(inventory.getMaxStackSize(), stack.getMaxStackSize());
+            }
+        }
+        fill /= inventory.getSize();
+        return (int) Math.floor(fill * 14) + (fill > 0 ? 1 : 0);
+    }
+
+    private static int power(Block dust) {
+        return dust.getBlockData() instanceof org.bukkit.block.data.type.RedstoneWire wire ? wire.getPower() : -1;
+    }
+
+    /** §6.2 "Piston pushes box": the box breaks and its drop carries the sticker. */
+    private void pistonTest(Location origin) {
+        if (claimsRun()) {
+            // GriefPrevention's defaults (PistonMovement: CLAIMS_ONLY, BlockSurfaceOtherExplosions) stop
+            // both on purpose; runServer, runFolia and runCanvas cover these rows.
+            plugin.getLogger().info("SELFTEST INFO piston and explosion drops skipped: GriefPrevention blocks"
+                    + " unclaimed piston movement and surface explosions");
+            itemTransferTests(origin);
+            return;
+        }
+        Block piston = origin.clone().add(-5, -20, -5).getBlock();
+        Block box = piston.getRelative(BlockFace.EAST);
+        Block power = piston.getRelative(BlockFace.WEST);
+        for (Block b : java.util.List.of(power, piston, box, box.getRelative(BlockFace.EAST))) {
+            b.setType(Material.AIR, false);
+            b.getRelative(BlockFace.DOWN).setType(Material.BARRIER, false);
+        }
+        removeItemsNear(box, 3);
+        java.util.Set<java.util.UUID> oldItems = itemIds(box, 16);
+        Sticker side = new Sticker(ICON.iconId(), ICON.iconVisual(), Anchor.SIDE, 0, Optional.of(Face.SOUTH));
+        placeDecoratedBox(box, BlockFace.UP, side);
+        Directional data = (Directional) Material.PISTON.createBlockData();
+        data.setFacing(BlockFace.EAST);
+        piston.setBlockData(data, false);
+        power.setType(Material.REDSTONE_BLOCK, true);
+        Bukkit.getRegionScheduler().runDelayed(plugin, origin, t -> {
+            java.util.List<ItemStack> drops = shulkerDropsNear(box, 3, oldItems);
+            plugin.getLogger().info("SELFTEST INFO piston: piston=" + piston.getBlockData().getAsString()
+                    + " box spot=" + box.getType() + " drops=" + drops.stream().map(this::describe).toList());
+            check("PRD 6.2: a box pushed by a piston drops an item that carries the sticker",
+                    drops.size() == 1 && StickerStore.read(drops.getFirst().getPersistentDataContainer()).equals(Optional.of(side))
+                            && box.getType() != Material.SHULKER_BOX);
+            removeItemsNear(box, 3);
+            power.setType(Material.AIR, false);
+            explosionTest(origin);
+        }, 6);
+    }
+
+    /** §6.2 "Explosion": the box is destroyed and its drop carries the sticker and the contents. */
+    private void explosionTest(Location origin) {
+        Block box = origin.clone().add(4, -20, 4).getBlock();
+        box.getRelative(BlockFace.DOWN).setType(Material.BARRIER, false);
+        removeItemsNear(box, 3);
+        java.util.Set<java.util.UUID> oldItems = itemIds(box, 16);
+        placeDecoratedBox(box, BlockFace.UP, ICON);
+        boolean exploded = box.getWorld().createExplosion(box.getLocation().add(0.5, 0.5, 0.5), 1f, false, true);
+        Bukkit.getRegionScheduler().runDelayed(plugin, origin, t -> {
+            java.util.List<ItemStack> drops = shulkerDropsNear(box, 3, oldItems);
+            plugin.getLogger().info("SELFTEST INFO explosion: exploded=" + exploded + " box spot=" + box.getType()
+                    + " drops=" + drops.stream().map(this::describe).toList());
+            check("PRD 6.2: a box destroyed by an explosion drops an item that carries the sticker and contents",
+                    drops.size() == 1 && StickerStore.read(drops.getFirst().getPersistentDataContainer()).equals(Optional.of(ICON))
+                            && drops.getFirst().getItemMeta() instanceof org.bukkit.inventory.meta.BlockStateMeta meta
+                            && meta.getBlockState() instanceof ShulkerBox inside
+                            && inside.getInventory().getItem(26) != null
+                            && inside.getInventory().getItem(26).getAmount() == 27);
+            removeItemsNear(box, 3);
+            itemTransferTests(origin);
+        }, 4);
+    }
+
+    /** §6.2 "Hopper, dropper": a stickered box item keeps its sticker when a hopper moves it or a dropper drops it. */
+    private void itemTransferTests(Location origin) {
+        Block hopper = origin.clone().add(-5, -25, -5).getBlock();
+        Block chest = hopper.getRelative(BlockFace.EAST);
+        Block dropper = origin.clone().add(-5, -25, 1).getBlock();
+        Block out = dropper.getRelative(BlockFace.EAST);
+        for (Block b : java.util.List.of(hopper, chest, dropper, out)) {
+            b.setType(Material.AIR, false);
+        }
+        // A barrier floor and a back wall keep the dropped item from sliding or falling away.
+        for (int dx = 0; dx <= 2; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                Block cell = out.getRelative(dx, 0, dz);
+                cell.getRelative(BlockFace.DOWN).setType(Material.BARRIER, false);
+                cell.setType(dx == 2 ? Material.BARRIER : Material.AIR, false);
+            }
+        }
+        removeItemsNear(out, 4);
+        java.util.Set<java.util.UUID> oldItems = itemIds(out, 16);
+        Sticker side = new Sticker(ICON.iconId(), ICON.iconVisual(), Anchor.SIDE, 0, Optional.of(Face.EAST));
+        ItemStack stack = new ItemStack(Material.LIME_SHULKER_BOX);
+        stack.editPersistentDataContainer(pdc -> StickerStore.write(pdc, side));
+
+        chest.setType(Material.CHEST, false);
+        placeHopper(hopper, BlockFace.EAST, stack.clone());
+        Directional data = (Directional) Material.DROPPER.createBlockData();
+        data.setFacing(BlockFace.EAST);
+        dropper.setBlockData(data, false);
+        org.bukkit.block.Dropper dropperState = (org.bukkit.block.Dropper) dropper.getState();
+        dropperState.getSnapshotInventory().clear();
+        dropperState.getSnapshotInventory().addItem(stack.clone());
+        dropperState.update(true, false);
+        ((org.bukkit.block.Dropper) dropper.getState()).drop();
+        int leftInDropper = total(dropper);
+
+        Bukkit.getRegionScheduler().runDelayed(plugin, origin, t -> {
+            ItemStack moved = ((org.bukkit.block.Chest) chest.getState()).getInventory().getItem(0);
+            check("PRD 6.2: a stickered box item moved by a hopper keeps its sticker (" + describe(moved) + ")",
+                    moved != null && moved.getType() == Material.LIME_SHULKER_BOX
+                            && StickerStore.read(moved.getPersistentDataContainer()).equals(Optional.of(side))
+                            && total(hopper) == 0);
+            java.util.List<ItemStack> dropped = shulkerDropsNear(out, 4, oldItems);
+            plugin.getLogger().info("SELFTEST INFO dropper: items near the dropper: " + itemsNear(out, 4).stream()
+                    .map(i -> i.getItemStack().getType() + " at " + i.getLocation().toVector() + " age " + i.getTicksLived())
+                    .toList());
+            check("PRD 6.2: a stickered box item dropped by a dropper keeps its sticker (left in dropper: " + leftInDropper + "; "
+                            + dropped.stream().map(this::describe).toList() + ")",
+                    dropped.size() == 1 && StickerStore.read(dropped.getFirst().getPersistentDataContainer()).equals(Optional.of(side)));
+            removeItemsNear(out, 4);
+            cloneTest(origin);
+        }, 12);
+    }
+
+    /**
+     * §6.2 "/clone, structure blocks": the copy keeps the sticker, and the chunk-load pass that
+     * re-attaches displays draws them on it. A structure is placed on every server; {@code /clone}
+     * runs only on Paper, since Folia/Canvas won't dispatch a console command from a region thread.
+     */
+    private void cloneTest(Location origin) {
+        Block source = origin.clone().add(4, -30, 4).getBlock();
+        Block structureCopy = source.getRelative(0, 0, -3);
+        Block commandCopy = source.getRelative(0, 0, -6);
+        for (Block b : java.util.List.of(structureCopy, commandCopy)) {
+            b.setType(Material.AIR, false);
+        }
+        placeDecoratedBox(source, BlockFace.UP, ICON);
+
+        var structure = Bukkit.getStructureManager().createStructure();
+        structure.fill(source.getLocation(), new org.bukkit.util.BlockVector(1, 1, 1), false);
+        structure.place(structureCopy.getLocation(), false, org.bukkit.block.structure.StructureRotation.NONE,
+                org.bukkit.block.structure.Mirror.NONE, 0, 1f, new java.util.Random(1));
+        java.util.List<Block> copies = new java.util.ArrayList<>(java.util.List.of(structureCopy));
+        if (DisplayManager.FOLIA) {
+            // Folia/Canvas refuse a console command from a region thread ("Dispatching command async").
+            plugin.getLogger().info("SELFTEST INFO /clone skipped: Folia/Canvas don't dispatch console commands"
+                    + " from a region thread; the structure copy covers the same block-entity copy");
+        } else {
+            String command = "clone %d %d %d %d %d %d %d %d %d".formatted(source.getX(), source.getY(), source.getZ(),
+                    source.getX(), source.getY(), source.getZ(), commandCopy.getX(), commandCopy.getY(), commandCopy.getZ());
+            boolean ran = Bukkit.dispatchCommand(Bukkit.getConsoleSender(), command);
+            plugin.getLogger().info("SELFTEST INFO /" + command + " -> " + ran + ", copy is " + commandCopy.getType());
+            copies.add(commandCopy);
+        }
+        for (Block copy : copies) {
+            String how = copy == structureCopy ? "structure" : "/clone";
+            check("PRD 6.2: a " + how + " copy of a decorated box keeps its sticker and name",
+                    copy.getState() instanceof ShulkerBox box
+                            && StickerStore.read(box.getPersistentDataContainer()).equals(Optional.of(ICON))
+                            && Component.text("Ores").equals(box.customName()));
+        }
+        // Nothing announces a copy in a loaded chunk; displays come with the next chunk load. Run that pass.
+        displays.forceNearby(true);
+        new DisplayListener(plugin, settings, displays)
+                .onChunkLoad(new org.bukkit.event.world.ChunkLoadEvent(source.getChunk(), false));
+        Bukkit.getRegionScheduler().runDelayed(plugin, origin, t -> {
+            for (Block copy : copies) {
+                String how = copy == structureCopy ? "structure" : "/clone";
+                var shown = displays.displaysAt(copy);
+                check("PRD 6.2: the chunk-load pass draws a " + how + " copy's icon and name ("
+                                + shown.stream().map(e -> e.getType().name()).toList() + ")",
+                        shown.size() == 2 && shown.stream().allMatch(Entity::isValid));
+            }
+            displays.removeAll();
+            summary();
+        }, 3);
+    }
+
+    /** Paper with claim plugins installed ({@code runClaims}). */
+    private static boolean claimsRun() {
+        return !System.getProperty("shulkerstickers.selftest.claims", "").isBlank();
+    }
+
+    /** An upright box with an icon sticker, a name and the given items. */
+    private static void placeStickeredBox(Block block, ItemStack... items) {
+        Directional data = (Directional) Material.SHULKER_BOX.createBlockData();
+        data.setFacing(BlockFace.UP);
+        block.setType(Material.AIR, false);
+        block.setBlockData(data, false);
+        ShulkerBox state = (ShulkerBox) block.getState();
+        state.getSnapshotInventory().clear();
+        for (int slot = 0; slot < items.length; slot++) {
+            state.getSnapshotInventory().setItem(slot, items[slot]);
+        }
+        state.customName(Component.text("Ores"));
+        StickerStore.write(state.getPersistentDataContainer(), ICON);
+        state.update(true, false);
+    }
+
+    private static void placeHopper(Block block, BlockFace facing, ItemStack... items) {
+        org.bukkit.block.data.type.Hopper data = (org.bukkit.block.data.type.Hopper) Material.HOPPER.createBlockData();
+        data.setFacing(facing);
+        block.setType(Material.AIR, false);
+        block.setBlockData(data, false);
+        org.bukkit.block.Hopper state = (org.bukkit.block.Hopper) block.getState();
+        state.getSnapshotInventory().clear();
+        for (int slot = 0; slot < items.length; slot++) {
+            state.getSnapshotInventory().setItem(slot, items[slot]);
+        }
+        state.update(true, false);
+    }
+
+    /** Item counts by type across the containers. */
+    private static java.util.Map<Material, Integer> count(Block... containers) {
+        java.util.Map<Material, Integer> counts = new java.util.TreeMap<>();
+        for (Block block : containers) {
+            if (block.getState(false) instanceof org.bukkit.block.Container container) {
+                for (ItemStack stack : container.getInventory().getContents()) {
+                    if (stack != null && !stack.isEmpty()) {
+                        counts.merge(stack.getType(), stack.getAmount(), Integer::sum);
+                    }
+                }
+            }
+        }
+        return counts;
+    }
+
+    /** "+N item" for each duplicated item, "-N item" for each lost one. */
+    private static String difference(java.util.Map<Material, Integer> expected, java.util.Map<Material, Integer> actual) {
+        java.util.Set<Material> types = new java.util.TreeSet<>(expected.keySet());
+        types.addAll(actual.keySet());
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (Material type : types) {
+            int delta = actual.getOrDefault(type, 0) - expected.getOrDefault(type, 0);
+            if (delta != 0) {
+                out.add((delta > 0 ? "+" : "") + delta + " " + type);
+            }
+        }
+        return out.isEmpty() ? "no difference" : String.join(", ", out);
+    }
+
+    private static int total(Block container) {
+        return count(container).values().stream().mapToInt(Integer::intValue).sum();
+    }
+
+    private static java.util.List<Item> itemsNear(Block block, double radius) {
+        return block.getWorld().getNearbyEntities(block.getLocation().add(0.5, 0.5, 0.5), radius, radius, radius,
+                e -> e instanceof Item).stream().map(e -> (Item) e).toList();
+    }
+
+    /** Item entities near the block that weren't there when {@code before} was taken. */
+    private static java.util.List<Item> newItemsNear(Block block, double radius, java.util.Set<java.util.UUID> before) {
+        return itemsNear(block, radius).stream().filter(i -> !before.contains(i.getUniqueId())).toList();
+    }
+
+    private static java.util.Set<java.util.UUID> itemIds(Block block, double radius) {
+        return itemsNear(block, radius).stream().map(Entity::getUniqueId).collect(java.util.stream.Collectors.toSet());
+    }
+
+    /** Shulker box items dropped near the block since {@code before} was taken (leftovers from an earlier run don't count). */
+    private static java.util.List<ItemStack> shulkerDropsNear(Block block, double radius, java.util.Set<java.util.UUID> before) {
+        return newItemsNear(block, radius, before).stream().map(Item::getItemStack)
+                .filter(i -> Tag.SHULKER_BOXES.isTagged(i.getType())).toList();
+    }
+
+    private static void removeItemsNear(Block block, double radius) {
+        itemsNear(block, radius).forEach(Entity::remove);
+    }
+
+    private String describe(ItemStack stack) {
+        return stack == null ? "nothing" : stack.getType() + " sticker=" + StickerStore.read(stack.getPersistentDataContainer());
     }
 
     /** Owner decision 2: the server's own lock check, reached by reflection, accepts the key. */
