@@ -119,7 +119,7 @@ final class StickerCommands {
             var pdc = box.getPersistentDataContainer();
             Map<String, Object> raw = StickerStore.raw(pdc);
             java.util.Optional<String> name = java.util.Optional.ofNullable(box.customName())
-                    .map(n -> net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(n));
+                    .map(SafeNames::plain);
             String where = block.getX() + " " + block.getY() + " " + block.getZ();
             var lines = InspectReport.lines(where, raw, name, StickerStore.isNameHidden(pdc));
             player.getScheduler().run(plugin, t -> {

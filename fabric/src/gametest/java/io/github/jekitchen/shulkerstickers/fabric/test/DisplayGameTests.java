@@ -112,6 +112,37 @@ public class DisplayGameTests {
                 count(elements(helper, BOX.east(2)), ItemDisplayElement.class), 1L, "icons on the copy"));
     }
 
+    /**
+     * Security: a crafted name nesting translations (9 levels, each fallback repeating its argument
+     * ten times) would expand to 10^9 characters through Component#getString and hang the server
+     * whenever the box is drawn. Drawing it must be quick and the label short.
+     */
+    @GameTest
+    public void aNameBombIsDrawnQuicklyAndShort(GameTestHelper helper) {
+        ShulkerBoxBlockEntity box = TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
+        Component bomb = Component.literal("x");
+        for (int level = 0; level < 9; level++) {
+            bomb = Component.translatableWithFallback("nope." + level, "%1$s%1$s%1$s%1$s%1$s%1$s%1$s%1$s%1$s%1$s", bomb);
+        }
+        // The bomb is real: three levels already expand to a thousand characters the vanilla way.
+        Component small = Component.literal("x");
+        for (int level = 0; level < 3; level++) {
+            small = Component.translatableWithFallback("nope." + level, "%1$s%1$s%1$s%1$s%1$s%1$s%1$s%1$s%1$s%1$s", small);
+        }
+        helper.assertValueEqual(small.getString().length(), 1000, "vanilla expansion of three levels");
+
+        box.setComponents(net.minecraft.core.component.DataComponentMap.builder().addAll(box.components())
+                .set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, bomb).build());
+        long start = System.nanoTime();
+        StickerDisplays.refresh(helper.getLevel(), helper.absolutePos(BOX));
+        long millis = (System.nanoTime() - start) / 1_000_000;
+        helper.assertTrue(millis < 500, "drawn in " + millis + " ms");
+        TextDisplayElement label = (TextDisplayElement) elements(helper, BOX).stream()
+                .filter(TextDisplayElement.class::isInstance).findFirst().orElseThrow();
+        helper.assertTrue(label.getText().getString().length() <= 64, "label kept short: " + label.getText().getString().length());
+        helper.succeed();
+    }
+
     @GameTest
     public void iconAndNameAreDrawn(GameTestHelper helper) {
         TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);

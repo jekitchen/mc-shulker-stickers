@@ -154,7 +154,7 @@ final class EditorService implements Listener {
         BoxColor color = BoxColor.fromItemId(block.getType().getKey().toString()).orElse(BoxColor.UNDYED);
         Optional<Sticker> sticker = StickerStore.read(box.getPersistentDataContainer());
         Optional<String> name = Optional.ofNullable(box.customName())
-                .map(c -> PlainTextComponentSerializer.plainText().serialize(c));
+                .map(SafeNames::plain);
         BoxState original = new BoxState(color, sticker.flatMap(Sticker::iconId),
                 sticker.flatMap(Sticker::iconVisual), name);
         Session session = new Session(player.getUniqueId(), key, clickedFace, new EditorSession(original));

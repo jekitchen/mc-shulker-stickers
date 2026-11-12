@@ -148,7 +148,7 @@ public final class EditorMenu extends ChestMenu {
         if (!(level.getBlockEntity(pos) instanceof ShulkerBoxBlockEntity box)) {
             return new BoxState(color, Optional.empty(), Optional.empty());
         }
-        Optional<String> name = Optional.ofNullable(box.getCustomName()).map(Component::getString);
+        Optional<String> name = Optional.ofNullable(box.getCustomName()).map(io.github.jekitchen.shulkerstickers.fabric.SafeNames::plain);
         Optional<Sticker> sticker = StickerData.read(box);
         return new BoxState(color, sticker.flatMap(Sticker::iconId), sticker.flatMap(Sticker::iconVisual), name);
     }

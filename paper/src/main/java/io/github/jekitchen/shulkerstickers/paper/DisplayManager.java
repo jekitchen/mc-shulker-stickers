@@ -159,7 +159,7 @@ class DisplayManager {
         Optional<String> name = Optional.ofNullable(box.customName())
                 .filter(n -> config.nameDisplayEnabled())
                 .filter(n -> !StickerStore.isNameHidden(pdc))
-                .map(n -> PlainTextComponentSerializer.plainText().serialize(n))
+                .map(SafeNames::plain)
                 .filter(n -> !n.isBlank());
         track(key, new Parts(icon.isPresent(), name.isPresent()));
         ensureCheck(key);

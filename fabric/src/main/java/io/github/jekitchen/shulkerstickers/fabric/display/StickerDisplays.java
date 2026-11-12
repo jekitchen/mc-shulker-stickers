@@ -233,7 +233,7 @@ public final class StickerDisplays {
         HIDDEN.getOrDefault(level, new HashSet<>()).remove(pos);
 
         Optional<Sticker> sticker = StickerData.read(box);
-        Optional<String> name = Optional.ofNullable(box.getCustomName()).map(Component::getString)
+        Optional<String> name = Optional.ofNullable(box.getCustomName()).map(io.github.jekitchen.shulkerstickers.fabric.SafeNames::plain)
                 .filter(n -> config.nameDisplayEnabled() && !StickerData.isNameHidden(box));
         Optional<ItemStack> icon = iconToDraw(sticker, config, level.registryAccess());
         if (icon.isEmpty() && name.isEmpty()) {
