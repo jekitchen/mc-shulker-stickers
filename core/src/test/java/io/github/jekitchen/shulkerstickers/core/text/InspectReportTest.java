@@ -51,4 +51,15 @@ class InspectReportTest {
                 new Line(Tone.HEADER, TextKeys.INSPECT_HEADER, List.of("0 0 0")),
                 new Line(Tone.NORMAL, TextKeys.INSPECT_LINE, List.of("name", "Wood"))), lines);
     }
+
+    /** Stored data comes from items and can be any size; an admin's chat gets a short version. */
+    @Test
+    void longValuesAreShortened() {
+        Map<String, Object> raw = new LinkedHashMap<>();
+        raw.put("icon_visual", "x".repeat(5000));
+        List<Line> lines = InspectReport.lines("0 0 0", raw, Optional.empty(), false);
+        String shown = String.valueOf(lines.get(1).args().get(1));
+        assertEquals(true, shown.length() < 260, "shown " + shown.length() + " characters");
+        assertEquals(true, shown.endsWith("(5000 characters)"));
+    }
 }

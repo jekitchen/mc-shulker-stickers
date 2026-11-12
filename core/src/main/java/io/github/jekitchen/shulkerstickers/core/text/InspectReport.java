@@ -42,12 +42,23 @@ public final class InspectReport {
             lines.add(new Line(Tone.NORMAL, TextKeys.INSPECT_NONE, List.of()));
             return lines;
         }
-        raw.forEach((key, value) -> lines.add(new Line(Tone.NORMAL, TextKeys.INSPECT_LINE, List.of(key, value))));
+        raw.forEach((key, value) -> lines.add(new Line(Tone.NORMAL, TextKeys.INSPECT_LINE, List.of(key, shorten(value)))));
         if (!raw.isEmpty() && StickerCodec.decode(raw).isEmpty()) {
             lines.add(new Line(Tone.WARNING, TextKeys.INSPECT_UNREADABLE, List.of()));
         }
         name.ifPresent(n -> lines.add(new Line(Tone.NORMAL, TextKeys.INSPECT_LINE,
                 List.of("name", n + (nameHidden ? " (hidden)" : "")))));
         return lines;
+    }
+
+    /** Longest value shown; stored data comes from items and can be any size. */
+    static final int MAX_VALUE_CHARS = 200;
+
+    /** The value unchanged, or if its text is long, that text cut to {@link #MAX_VALUE_CHARS} with its full length. */
+    static Object shorten(Object value) {
+        String text = String.valueOf(value);
+        return text.length() <= MAX_VALUE_CHARS
+                ? value
+                : text.substring(0, MAX_VALUE_CHARS) + "… (" + text.length() + " characters)";
     }
 }
