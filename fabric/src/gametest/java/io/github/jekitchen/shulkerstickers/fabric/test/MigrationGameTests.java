@@ -50,15 +50,16 @@ public class MigrationGameTests {
     }
 
     @GameTest
-    public void paperRootWithoutOurKeysClearsTheStaleCopy(GameTestHelper helper) {
-        // On Paper the sticker was removed; only the stale item copy is left in custom_data.
+    public void rootWithOnlyOtherPluginsDataKeepsOurSticker(GameTestHelper helper) {
+        // A Fabric box that visited Paper without our plugin: another plugin left a root key.
+        // That says nothing about our sticker, so the Fabric sticker must survive.
         ShulkerBoxBlockEntity box = TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
         ShulkerBoxBlockEntity loaded = reload(helper, box, tag -> {
             CompoundTag paper = new CompoundTag();
             paper.putString("otherplugin:key", "theirs");
             tag.put("PublicBukkitValues", paper);
         });
-        helper.assertValueEqual(StickerData.read(loaded), Optional.empty(), "no sticker, as Paper showed");
+        helper.assertValueEqual(StickerData.read(loaded), Optional.of(TestBoxes.STICKER), "Fabric sticker kept");
         helper.succeed();
     }
 

@@ -109,11 +109,17 @@ public final class StickerData {
 
     /**
      * A box saved by Paper (owner decision 4): {@code paperValues} is the block entity's root
-     * {@code PublicBukkitValues}, which is what Paper displayed. Our keys there replace ours in
-     * {@code custom_data}, which on Paper is only a stale copy of the item the box was placed
-     * from. Other keys are left alone.
+     * {@code PublicBukkitValues}, which is what Paper displayed. When it holds any of our keys,
+     * they replace ours in {@code custom_data}, which on Paper is only a stale copy of the item
+     * the box was placed from. A root with none of our keys (another plugin's data only) proves
+     * nothing about our sticker, so {@code custom_data} is then left alone. Other keys are never
+     * touched.
      */
     public static void adoptPaperValues(BlockEntity blockEntity, CompoundTag paperValues) {
+        boolean hasOurs = StickerFormat.BOX_KEYS.stream().anyMatch(k -> paperValues.contains(StickerFormat.fullKey(k)));
+        if (!hasOurs) {
+            return;
+        }
         // Runs while the block entity loads, so it doesn't mark the chunk changed. If the chunk is
         // never re-saved, the old data is still on disk and this simply runs again next load.
         update(blockEntity, false, bukkit -> {

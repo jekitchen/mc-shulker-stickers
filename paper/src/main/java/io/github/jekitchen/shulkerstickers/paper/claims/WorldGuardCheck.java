@@ -4,10 +4,15 @@ import com.sk89q.worldedit.bukkit.BukkitAdapter;
 import com.sk89q.worldguard.LocalPlayer;
 import com.sk89q.worldguard.WorldGuard;
 import com.sk89q.worldguard.bukkit.WorldGuardPlugin;
+import com.sk89q.worldguard.protection.flags.Flags;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 
-/** WorldGuard: the region "build" test, unless the player has region bypass. */
+/**
+ * WorldGuard: the region build test including the {@code block-place} and {@code block-break}
+ * flags (recoloring replaces the block), unless the player has region bypass. Fabric likewise
+ * asks for both placing and breaking.
+ */
 final class WorldGuardCheck implements ClaimCheck {
 
     @Override
@@ -23,7 +28,8 @@ final class WorldGuardCheck implements ClaimCheck {
             return true;
         }
         return platform.getRegionContainer().createQuery()
-                .testBuild(BukkitAdapter.adapt(block.getLocation().add(0.5, 0.5, 0.5)), local);
+                .testBuild(BukkitAdapter.adapt(block.getLocation().add(0.5, 0.5, 0.5)), local,
+                        Flags.BLOCK_PLACE, Flags.BLOCK_BREAK);
     }
 
     @Override

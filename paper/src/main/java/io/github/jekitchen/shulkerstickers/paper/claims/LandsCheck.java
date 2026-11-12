@@ -2,12 +2,15 @@ package io.github.jekitchen.shulkerstickers.paper.claims;
 
 import me.angeschossen.lands.api.LandsIntegration;
 import me.angeschossen.lands.api.flags.type.Flags;
-import me.angeschossen.lands.api.land.Area;
+import me.angeschossen.lands.api.land.LandWorld;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.Plugin;
 
-/** Lands: the area's block-place role flag. Unclaimed land is left to Lands' own wilderness rules. */
+/**
+ * Lands: the block-place and block-break role flags at the box, asked of the Lands world so the
+ * wilderness rules apply too. Worlds Lands doesn't manage are allowed.
+ */
 final class LandsCheck implements ClaimCheck {
 
     private final LandsIntegration lands;
@@ -23,7 +26,11 @@ final class LandsCheck implements ClaimCheck {
 
     @Override
     public boolean canBuild(Player player, Block block) {
-        Area area = lands.getArea(block.getLocation());
-        return area == null || area.hasRoleFlag(player, Flags.BLOCK_PLACE, block.getType(), false);
+        LandWorld world = lands.getWorld(block.getWorld());
+        if (world == null) {
+            return true;
+        }
+        return world.hasRoleFlag(player, block.getLocation(), Flags.BLOCK_PLACE, block.getType(), false)
+                && world.hasRoleFlag(player, block.getLocation(), Flags.BLOCK_BREAK, block.getType(), false);
     }
 }
