@@ -45,13 +45,15 @@ final class SelfTest {
     private final Plugin plugin;
     private final Settings settings;
     private final DisplayManager displays;
+    private final EditorService editor;
     private final AtomicInteger passed = new AtomicInteger();
     private final AtomicInteger failed = new AtomicInteger();
 
-    SelfTest(Plugin plugin, Settings settings, DisplayManager displays) {
+    SelfTest(Plugin plugin, Settings settings, DisplayManager displays, EditorService editor) {
         this.plugin = plugin;
         this.settings = settings;
         this.displays = displays;
+        this.editor = editor;
     }
 
     void schedule() {
@@ -575,6 +577,9 @@ final class SelfTest {
         java.util.Set<java.util.UUID> oldItems = itemIds(box, 16);
         Sticker side = new Sticker(ICON.iconId(), ICON.iconVisual(), Anchor.SIDE, 0, Optional.of(Face.SOUTH));
         placeDecoratedBox(box, BlockFace.UP, side);
+        // §9 "Box moved while the editor is open": an edit is open on this box when the piston fires.
+        java.util.UUID holder = java.util.UUID.randomUUID();
+        AtomicBoolean gone = editor.startSelfTestEdit(holder, box);
         Directional data = (Directional) Material.PISTON.createBlockData();
         data.setFacing(BlockFace.EAST);
         piston.setBlockData(data, false);
@@ -588,8 +593,35 @@ final class SelfTest {
                             && box.getType() != Material.SHULKER_BOX);
             removeItemsNear(box, 3);
             power.setType(Material.AIR, false);
+            pistonDuringEditCheck(box, piston, holder, gone);
             explosionTest(origin);
         }, 6);
+    }
+
+    /**
+     * The editor saw the piston take the box, so a Save refuses with "moved or broken" even after
+     * a box of the same color is put back at the same spot (PRD §6.3 step 1, §9).
+     */
+    private void pistonDuringEditCheck(Block box, Block piston, java.util.UUID holder, AtomicBoolean gone) {
+        boolean seen = gone.get();
+        piston.setType(Material.AIR, false);
+        box.setType(Material.AIR, false); // the piston head
+        Directional upright = (Directional) Material.SHULKER_BOX.createBlockData();
+        upright.setFacing(BlockFace.UP);
+        box.setBlockData(upright, false);
+        io.github.jekitchen.shulkerstickers.core.BoxState original = new io.github.jekitchen.shulkerstickers.core.BoxState(
+                BoxColor.UNDYED, Optional.empty(), Optional.empty(), Optional.empty());
+        EditorService.SaveResult result = editor.apply(box, new EditorService.SaveRequest(original,
+                original.withName(Optional.of("Moved")), new io.github.jekitchen.shulkerstickers.core.Changes(false, false, true),
+                BlockFace.UP, 0, false, gone));
+        boolean untouched = ((ShulkerBox) box.getState()).customName() == null;
+        editor.endSelfTestEdit(holder);
+        check("PRD 9: a box pushed by a piston during an edit makes Save refuse, even with a new box at the spot"
+                        + " (piston seen " + seen + ", saved " + result.saved() + ", message " + result.messageKey()
+                        + ", new box untouched " + untouched + ", lock released " + editor.editorOf(box).isEmpty() + ")",
+                seen && !result.saved() && TextKeys.SAVE_BOX_GONE.equals(result.messageKey()) && untouched
+                        && editor.editorOf(box).isEmpty());
+        box.setType(Material.AIR, false);
     }
 
     /** §6.2 "Explosion": the box is destroyed and its drop carries the sticker and the contents. */
@@ -672,8 +704,175 @@ final class SelfTest {
                             + dropped.stream().map(this::describe).toList() + ")",
                     dropped.size() == 1 && StickerStore.read(dropped.getFirst().getPersistentDataContainer()).equals(Optional.of(side)));
             removeItemsNear(out, 4);
-            cloneTest(origin);
+            unknownIconTest(origin);
+            boxInUseTest(origin, () -> cloneTest(origin));
         }, 12);
+    }
+
+    // ---- PRD §9 edge cases through the editor's Save (no player: Save's apply step is called directly) ----
+
+    /**
+     * §6.1, §9 "Icon item no longer exists": a valid v1 sticker whose icon is from a mod that is
+     * gone draws no icon (the name still shows), and its raw data survives a rename and a recolor
+     * through Save, and a break.
+     */
+    private void unknownIconTest(Location origin) {
+        Block box = origin.clone().add(-4, -5, 0).getBlock();
+        java.util.Map<String, Object> raw = java.util.Map.of(
+                io.github.jekitchen.shulkerstickers.core.data.StickerFormat.V, 1,
+                io.github.jekitchen.shulkerstickers.core.data.StickerFormat.ICON_ID, "nomod:thing",
+                io.github.jekitchen.shulkerstickers.core.data.StickerFormat.ANCHOR, "lid",
+                io.github.jekitchen.shulkerstickers.core.data.StickerFormat.ROT, 0);
+        Directional upright = (Directional) Material.SHULKER_BOX.createBlockData();
+        upright.setFacing(BlockFace.UP);
+        box.setType(Material.AIR, false);
+        box.setBlockData(upright, false);
+        ShulkerBox state = (ShulkerBox) box.getState();
+        state.customName(Component.text("Ores"));
+        raw.forEach((k, v) -> {
+            if (v instanceof Integer i) {
+                state.getPersistentDataContainer().set(PaperKeys.sticker(k), org.bukkit.persistence.PersistentDataType.INTEGER, i);
+            } else {
+                state.getPersistentDataContainer().set(PaperKeys.sticker(k), org.bukkit.persistence.PersistentDataType.STRING, (String) v);
+            }
+        });
+        state.update(true, false);
+        Optional<Sticker> read = StickerStore.read(((ShulkerBox) box.getState()).getPersistentDataContainer());
+
+        displays.forceNearby(true);
+        displays.refresh(box);
+        var shown = displays.displaysAt(box);
+        check("PRD 9: an icon from a mod that is gone (nomod:thing, a valid v1 sticker) draws nothing; the name still does ("
+                        + "read " + read + ", drawn " + shown.stream().map(e -> e.getType().name()).toList() + ")",
+                read.flatMap(Sticker::iconId).equals(Optional.of("nomod:thing"))
+                        && shown.size() == 1 && shown.getFirst() instanceof TextDisplay);
+
+        io.github.jekitchen.shulkerstickers.core.BoxState original = new io.github.jekitchen.shulkerstickers.core.BoxState(
+                BoxColor.UNDYED, Optional.of("nomod:thing"), Optional.empty(), Optional.of("Ores"));
+        EditorService.SaveResult result = editor.apply(box, new EditorService.SaveRequest(original,
+                original.withColor(BoxColor.CYAN).withName(Optional.of("Chests")),
+                new io.github.jekitchen.shulkerstickers.core.Changes(true, false, true),
+                BlockFace.UP, 0, false, new AtomicBoolean()));
+        ShulkerBox after = (ShulkerBox) box.getState();
+        java.util.Map<String, Object> rawAfter = StickerStore.raw(after.getPersistentDataContainer());
+        check("PRD 9: its raw sticker data survives a rename and a recolor through Save (saved " + result.saved()
+                        + ", now " + box.getType() + " named " + after.customName() + ", data " + rawAfter + ")",
+                result.saved() && box.getType() == Material.CYAN_SHULKER_BOX
+                        && Component.text("Chests").equals(after.customName()) && raw.equals(rawAfter));
+        ItemStack drop = box.getDrops().stream().filter(i -> Tag.SHULKER_BOXES.isTagged(i.getType())).findFirst().orElse(null);
+        java.util.Map<String, Object> dropped = drop == null ? java.util.Map.of() : StickerStore.raw(drop.getPersistentDataContainer());
+        check("PRD 9: ...and a break drops it unchanged (" + dropped + ")", raw.equals(dropped));
+        displays.forget(BlockKey.of(box));
+        box.setType(Material.AIR, false);
+    }
+
+    /**
+     * §5.2, §5.5, §9 "Box open at Save": with someone viewing the box, a Save of color, icon and name
+     * applies the icon and name, refuses the color with "Box is in use", and the displays stay hidden
+     * until the viewer closes the box. Nobody is online, so a stand-in viewer is put in the box's
+     * viewer list (what the server checks) and DisplayListener gets the open and close events.
+     */
+    private void boxInUseTest(Location origin, Runnable then) {
+        Block box = origin.clone().add(-2, -5, 0).getBlock();
+        placeDecoratedBox(box, BlockFace.UP, ICON);
+        ShulkerBox unlocked = (ShulkerBox) box.getState();
+        unlocked.setLockItem(null); // Save checks the lock; this test is about the viewer
+        unlocked.update(true, false);
+        displays.forceNearby(true);
+        displays.refresh(box);
+        int drawnBefore = displays.displaysAt(box).size();
+
+        org.bukkit.inventory.Inventory inventory = ((ShulkerBox) box.getState(false)).getInventory();
+        org.bukkit.entity.HumanEntity viewer = stub(org.bukkit.entity.HumanEntity.class, java.util.Map.of());
+        org.bukkit.inventory.InventoryView view = stub(org.bukkit.inventory.InventoryView.class,
+                java.util.Map.of("getTopInventory", inventory, "getPlayer", viewer));
+        DisplayListener listener = new DisplayListener(plugin, settings, displays);
+        String setup;
+        try {
+            inventory.getViewers().add(viewer);
+            setup = "viewers " + inventory.getViewers().size();
+        } catch (RuntimeException e) {
+            setup = "can't add a viewer: " + e;
+        }
+        String setupNote = setup;
+        listener.onOpen(new org.bukkit.event.inventory.InventoryOpenEvent(view));
+        Bukkit.getRegionScheduler().runDelayed(plugin, origin, t1 -> {
+            boolean hiddenOnOpen = displays.displaysAt(box).isEmpty();
+            io.github.jekitchen.shulkerstickers.core.BoxState original = new io.github.jekitchen.shulkerstickers.core.BoxState(
+                    BoxColor.UNDYED, ICON.iconId(), ICON.iconVisual(), Optional.of("Ores"));
+            EditorService.SaveResult result = editor.apply(box, new EditorService.SaveRequest(original,
+                    original.withColor(BoxColor.RED).withIcon(Optional.of("minecraft:diamond"), Optional.empty())
+                            .withName(Optional.of("Gems")),
+                    new io.github.jekitchen.shulkerstickers.core.Changes(true, true, true),
+                    BlockFace.UP, 0, false, new AtomicBoolean()));
+            ShulkerBox after = (ShulkerBox) box.getState();
+            boolean hiddenAfterSave = displays.displaysAt(box).isEmpty();
+            check("PRD 9: Save while someone has the box open applies icon and name, refuses only the color (box in use)"
+                            + " (" + setupNote + "; saved " + result.saved() + ", message " + result.messageKey() + ", applied "
+                            + result.applied() + ", now " + box.getType() + " named " + after.customName() + ", sticker "
+                            + StickerStore.read(after.getPersistentDataContainer()) + ")",
+                    result.saved() && TextKeys.SAVE_BOX_IN_USE.equals(result.messageKey())
+                            && result.applied().equals(new io.github.jekitchen.shulkerstickers.core.Changes(false, true, true))
+                            && box.getType() == Material.SHULKER_BOX
+                            && Component.text("Gems").equals(after.customName())
+                            && StickerStore.read(after.getPersistentDataContainer()).flatMap(Sticker::iconId)
+                                    .equals(Optional.of("minecraft:diamond")));
+            check("PRD 5.5: displays are hidden while the box is open, also after that Save (drawn before " + drawnBefore
+                            + ", hidden on open " + hiddenOnOpen + ", after Save " + hiddenAfterSave + ")",
+                    drawnBefore == 2 && hiddenOnOpen && hiddenAfterSave);
+            try {
+                inventory.getViewers().remove(viewer);
+            } catch (RuntimeException e) {
+                plugin.getLogger().warning("SELFTEST can't remove the stand-in viewer: " + e);
+            }
+            listener.onClose(new org.bukkit.event.inventory.InventoryCloseEvent(view));
+            Bukkit.getRegionScheduler().runDelayed(plugin, origin, t2 -> {
+                var shown = displays.displaysAt(box);
+                boolean newIcon = shown.stream().anyMatch(e -> e instanceof ItemDisplay d
+                        && d.getItemStack().getType() == Material.DIAMOND);
+                check("PRD 5.5: the displays come back, with the new icon, once the viewer closes the box ("
+                                + shown.stream().map(e -> e.getType() + (e.isValid() ? "" : "(invalid)")).toList() + ")",
+                        shown.size() == 2 && shown.stream().allMatch(Entity::isValid) && newIcon);
+                displays.forget(BlockKey.of(box));
+                box.setType(Material.AIR, false);
+                then.run();
+            }, 30);
+        }, 3);
+    }
+
+    /**
+     * A stand-in for an interface nobody on this server can provide (no players): answers
+     * {@code answers} by method name, and a default for everything else.
+     */
+    @SuppressWarnings("unchecked")
+    private static <T> T stub(Class<T> type, java.util.Map<String, Object> answers) {
+        return (T) java.lang.reflect.Proxy.newProxyInstance(type.getClassLoader(), new Class<?>[] {type},
+                new java.lang.reflect.InvocationHandler() {
+                    @Override
+                    public Object invoke(Object proxy, java.lang.reflect.Method method, Object[] args) {
+                        String name = method.getName();
+                        if (answers.containsKey(name)) {
+                            return answers.get(name);
+                        }
+                        Class<?> r = method.getReturnType();
+                        return switch (name) {
+                            case "equals" -> proxy == args[0];
+                            case "hashCode" -> System.identityHashCode(proxy);
+                            case "toString" -> "selftest " + type.getSimpleName();
+                            case "getName" -> "selftest";
+                            default -> !r.isPrimitive() ? null
+                                    : r == boolean.class ? false
+                                    : r == void.class ? null
+                                    : r == float.class ? 0f
+                                    : r == double.class ? 0d
+                                    : r == long.class ? 0L
+                                    : r == char.class ? (char) 0
+                                    : r == byte.class ? (byte) 0
+                                    : r == short.class ? (short) 0
+                                    : (Object) 0;
+                        };
+                    }
+                });
     }
 
     /**
@@ -735,7 +934,7 @@ final class SelfTest {
                     checkChunkEdge(world.getBlockAt(15, 250, 12), "next to a loaded chunk", true);
                 } finally {
                     neighbour.removePluginChunkTicket(plugin);
-                    chunkEdgeTest(world, this::summary);
+                    chunkEdgeTest(world, () -> chunkReloadTest(world, this::summary));
                 }
             }));
         }, 3);
@@ -756,6 +955,107 @@ final class SelfTest {
                 chunk.removePluginChunkTicket(plugin);
                 then.run();
             }
+        }));
+    }
+
+    /** Far from spawn and from every other check, so nothing else keeps it loaded. */
+    private static final int RELOAD_CHUNK_X = -120;
+    private static final int RELOAD_CHUNK_Z = 90;
+    /** How long to wait for the chunk to unload once its ticket is gone (polled every 10 ticks). */
+    private static final int UNLOAD_WAIT_TICKS = 1200;
+
+    /**
+     * §9 "Chunk unload/reload": a decorated box in a far chunk held by a plugin ticket gets its
+     * displays; the ticket is released and the chunk really unloads; loading it again draws the
+     * icon and name anew, and the old display entities are gone.
+     */
+    private void chunkReloadTest(World world, Runnable then) {
+        Location at = new Location(world, RELOAD_CHUNK_X * 16 + 8, 250, RELOAD_CHUNK_Z * 16 + 8);
+        world.getChunkAtAsync(at).thenAccept(chunk -> Bukkit.getRegionScheduler().execute(plugin, at, () -> {
+            chunk.addPluginChunkTicket(plugin);
+            java.util.List<Entity> before = java.util.List.of();
+            String error = "";
+            try {
+                placeDecoratedBox(at.getBlock(), BlockFace.UP, ICON);
+                displays.forceNearby(true);
+                displays.refresh(at.getBlock());
+                before = java.util.List.copyOf(displays.displaysAt(at.getBlock()));
+            } catch (RuntimeException e) {
+                error = "; error: " + e;
+                plugin.getLogger().log(java.util.logging.Level.WARNING, "SELFTEST chunk reload", e);
+            }
+            check("chunk reload setup: a decorated box in chunk " + RELOAD_CHUNK_X + "," + RELOAD_CHUNK_Z
+                            + " held by a plugin ticket draws its icon and name (" + before.size() + " displays" + error + ")",
+                    before.size() == 2 && before.stream().allMatch(Entity::isValid));
+            java.util.List<Entity> old = before;
+            chunk.removePluginChunkTicket(plugin);
+            awaitUnload(world, at, old, then);
+        }));
+    }
+
+    /** Global region thread: polls until the chunk is unloaded (or the wait runs out), then loads it again. */
+    private void awaitUnload(World world, Location at, java.util.List<Entity> old, Runnable then) {
+        Bukkit.getGlobalRegionScheduler().runAtFixedRate(plugin, new java.util.function.Consumer<>() {
+            int waited;
+
+            @Override
+            public void accept(io.papermc.paper.threadedregions.scheduler.ScheduledTask task) {
+                boolean loaded;
+                try {
+                    loaded = world.isChunkLoaded(RELOAD_CHUNK_X, RELOAD_CHUNK_Z);
+                } catch (RuntimeException e) {
+                    task.cancel();
+                    check("chunk reload: can ask whether the chunk is loaded: " + e, false);
+                    then.run();
+                    return;
+                }
+                if (loaded && waited < UNLOAD_WAIT_TICKS) {
+                    waited += 10;
+                    return;
+                }
+                task.cancel();
+                boolean forgotten = displays.trackedInChunk(world.getUID(), RELOAD_CHUNK_X, RELOAD_CHUNK_Z).isEmpty();
+                check("chunk reload: the chunk unloads once its ticket is released, and its box is forgotten (unloaded "
+                                + !loaded + " after about " + waited + " ticks, forgotten " + forgotten + ")",
+                        !loaded && forgotten);
+                reload(world, at, old, then);
+            }
+        }, 10, 10);
+    }
+
+    private void reload(World world, Location at, java.util.List<Entity> old, Runnable then) {
+        displays.forceNearby(true);
+        world.getChunkAtAsync(at).thenAccept(chunk -> Bukkit.getRegionScheduler().execute(plugin, at, () -> {
+            chunk.addPluginChunkTicket(plugin);
+            // The chunk-load pass draws the box on the chunk's region; give it time, checking every 10 ticks.
+            Bukkit.getRegionScheduler().runAtFixedRate(plugin, at, new java.util.function.Consumer<>() {
+                int left = 10;
+
+                @Override
+                public void accept(io.papermc.paper.threadedregions.scheduler.ScheduledTask task) {
+                    Block box = at.getBlock();
+                    var shown = displays.displaysAt(box);
+                    boolean drawn = shown.size() == 2 && shown.stream().allMatch(Entity::isValid);
+                    if (!drawn && --left > 0) {
+                        return;
+                    }
+                    task.cancel();
+                    boolean oldGone = old.stream().noneMatch(Entity::isValid) && old.stream().noneMatch(shown::contains);
+                    long ours = box.getWorld().getNearbyEntities(box.getLocation().add(0.5, 0.5, 0.5), 3, 3, 3,
+                            e -> e instanceof Display && e.getPersistentDataContainer().has(PaperKeys.DISPLAY)).size();
+                    check("chunk reload: after the chunk loads again the box's icon and name are drawn anew and the old"
+                                    + " displays are gone (" + shown.stream().map(e -> e.getType() + (e.isValid() ? "" : "(invalid)"))
+                                            .toList() + ", old gone " + oldGone + ", our displays near the box " + ours + ")",
+                            drawn && oldGone && ours == 2);
+                    try {
+                        displays.forget(BlockKey.of(box));
+                        box.setType(Material.AIR, false);
+                    } finally {
+                        chunk.removePluginChunkTicket(plugin);
+                        then.run();
+                    }
+                }
+            }, 10, 10);
         }));
     }
 
