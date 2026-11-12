@@ -72,6 +72,8 @@ Canvas isn't a Modrinth or Hangar loader tag. Mention it in the description inst
 >
 > This is an **alpha**: please report problems at https://github.com/jekitchen/mc-shulker-stickers/issues.
 
-**Gallery:** needs screenshots from a vanilla client: the editor, a wall of decorated boxes, and an icon on a side face. Only the owner can take these (they need a game client).
+**Icon:** `docs/images/icon-512.png` (redraw with `docs/images/make_icon.py`).
+
+**Gallery:** needs screenshots from a vanilla client: the editor, a wall of decorated boxes, and an icon on a side face.
 
 **License:** MIT. Source: https://github.com/jekitchen/mc-shulker-stickers
