@@ -30,6 +30,9 @@ final class TestPlayers {
         Connection connection = new Connection(PacketFlow.SERVERBOUND);
         new EmbeddedChannel(connection);
         helper.getLevel().getServer().getPlayerList().placeNewPlayer(connection, player, cookie);
+        // The test level's default mode is creative. Switch for real too, so abilities such as
+        // infinite materials (which vanilla's anvil, cauldron and buckets check) match the mode.
+        player.setGameMode(mode);
         return player;
     }
 
