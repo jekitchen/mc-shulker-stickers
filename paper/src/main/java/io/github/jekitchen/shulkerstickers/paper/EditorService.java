@@ -397,7 +397,8 @@ final class EditorService implements Listener {
         event.getView().setRepairCost(0);
     }
 
-    private void finishRename(Player player, String text) {
+    /** What the rename screen's result slot does; package-private for tests (MockBukkit has no anvil menu). */
+    void finishRename(Player player, String text) {
         Session session = sessions.get(player.getUniqueId());
         if (session == null) {
             return;
@@ -536,8 +537,8 @@ final class EditorService implements Listener {
     private static void cancelQuietly(ScheduledTask task) {
         try {
             task.cancel();
-        } catch (UnsupportedOperationException e) {
-            // MockBukkit doesn't implement cancel; real servers do.
+        } catch (RuntimeException e) {
+            // MockBukkit doesn't implement cancel (its exception isn't an UnsupportedOperationException); real servers do.
         }
     }
 
@@ -895,6 +896,28 @@ final class EditorService implements Listener {
 
     int openSessions() {
         return sessions.size();
+    }
+
+    /**
+     * Self-test hook (no players on that server): an edit session on {@code block} held by
+     * {@code holder}, who isn't online, so the box-removal listeners can be checked with real
+     * pistons. Returns the flag a Save would read; {@link #endSelfTestEdit} releases it.
+     */
+    AtomicBoolean startSelfTestEdit(UUID holder, Block block) {
+        BlockKey key = BlockKey.of(block);
+        BoxColor color = BoxColor.fromItemId(block.getType().getKey().toString()).orElse(BoxColor.UNDYED);
+        Session session = new Session(holder, key, BlockFace.UP,
+                new EditorSession(new BoxState(color, Optional.empty(), Optional.empty(), Optional.empty())));
+        locks.put(key, holder);
+        sessions.put(holder, session);
+        return session.boxGone;
+    }
+
+    void endSelfTestEdit(UUID holder) {
+        Session session = sessions.get(holder);
+        if (session != null) {
+            end(session);
+        }
     }
 
     Optional<UUID> editorOf(Block block) {

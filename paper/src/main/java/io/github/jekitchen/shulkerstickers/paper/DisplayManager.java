@@ -435,6 +435,12 @@ class DisplayManager {
         checkChunk(new ChunkKey(world, chunkX, chunkZ), null);
     }
 
+    /** Test hook: true while the box's displays are hidden because someone has it open. */
+    boolean hiddenWhileOpen(BlockKey key) {
+        Drawn drawn = displays.get(key);
+        return drawn != null && drawn.hiddenOpen();
+    }
+
     int trackedCount() {
         return tracked.size();
     }
