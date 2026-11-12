@@ -11,6 +11,7 @@ import io.github.jekitchen.shulkerstickers.core.config.StickerConfig;
 import io.github.jekitchen.shulkerstickers.core.data.Sticker;
 import io.github.jekitchen.shulkerstickers.core.editor.EditorLayout;
 import io.github.jekitchen.shulkerstickers.core.editor.EditorLook;
+import io.github.jekitchen.shulkerstickers.paper.claims.Claims;
 import io.github.jekitchen.shulkerstickers.core.rules.Costs;
 import io.github.jekitchen.shulkerstickers.core.rules.NameRules;
 import io.github.jekitchen.shulkerstickers.core.text.TextKeys;
@@ -108,17 +109,24 @@ final class EditorService implements Listener {
     private final Map<BlockKey, UUID> locks = new ConcurrentHashMap<>();
     private final PendingRefunds payments = new PendingRefunds();
 
+    private final Claims claims;
+
     EditorService(Plugin plugin, Settings settings, DisplayManager displays) {
+        this(plugin, settings, displays, Claims.none(plugin.getServer().getPluginManager(), plugin.getLogger()));
+    }
+
+    EditorService(Plugin plugin, Settings settings, DisplayManager displays, Claims claims) {
         this.plugin = plugin;
         this.settings = settings;
         this.displays = displays;
+        this.claims = claims;
     }
 
     // ---- opening -------------------------------------------------------------------------
 
     /** Called on the player's (and, in reach, the box's) region thread. */
     void open(Player player, Block block, BlockFace clickedFace) {
-        Optional<String> denial = Access.denial(player, block, settings.config(), plugin.getLogger());
+        Optional<String> denial = Access.denial(player, block, settings.config(), plugin.getLogger(), claims);
         if (denial.isPresent()) {
             player.sendActionBar(Texts.text(player, NamedTextColor.RED, denial.get()));
             return;

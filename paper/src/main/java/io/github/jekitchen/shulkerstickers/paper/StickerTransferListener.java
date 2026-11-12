@@ -37,6 +37,9 @@ final class StickerTransferListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     void onPlace(BlockPlaceEvent event) {
+        if (event instanceof io.github.jekitchen.shulkerstickers.paper.claims.ClaimTestPlaceEvent) {
+            return; // a claim test, not a placement
+        }
         ItemStack stack = event.getItemInHand();
         Block block = event.getBlockPlaced();
         if (!Tag.SHULKER_BOXES.isTagged(stack.getType())) {

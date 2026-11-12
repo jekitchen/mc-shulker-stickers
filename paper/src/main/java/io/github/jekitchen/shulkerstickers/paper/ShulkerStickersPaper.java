@@ -15,7 +15,8 @@ public final class ShulkerStickersPaper extends JavaPlugin {
         settings = new Settings(getDataFolder().toPath().resolve("config.json"), getLogger());
         settings.reload();
         displays = new DisplayManager(this, settings);
-        editor = new EditorService(this, settings, displays);
+        editor = new EditorService(this, settings, displays,
+                io.github.jekitchen.shulkerstickers.paper.claims.Claims.detect(this));
         var pm = getServer().getPluginManager();
         pm.registerEvents(new GestureListener(editor), this);
         pm.registerEvents(editor, this);

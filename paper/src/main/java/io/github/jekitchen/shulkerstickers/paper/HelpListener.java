@@ -21,6 +21,9 @@ final class HelpListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     void onPlace(BlockPlaceEvent event) {
+        if (event instanceof io.github.jekitchen.shulkerstickers.paper.claims.ClaimTestPlaceEvent) {
+            return; // a claim test, not a placement
+        }
         Player player = event.getPlayer();
         if (!settings.config().firstPlaceMessage()
                 || !Tag.SHULKER_BOXES.isTagged(event.getBlockPlaced().getType())

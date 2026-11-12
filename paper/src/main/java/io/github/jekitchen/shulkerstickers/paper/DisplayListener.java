@@ -82,7 +82,8 @@ final class DisplayListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     void onPlace(BlockPlaceEvent event) {
-        if (Tag.SHULKER_BOXES.isTagged(event.getBlockPlaced().getType())) {
+        if (!(event instanceof io.github.jekitchen.shulkerstickers.paper.claims.ClaimTestPlaceEvent)
+                && Tag.SHULKER_BOXES.isTagged(event.getBlockPlaced().getType())) {
             displays.refreshLater(event.getBlockPlaced());
         }
     }

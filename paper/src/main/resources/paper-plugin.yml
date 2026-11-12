@@ -4,6 +4,13 @@ main: io.github.jekitchen.shulkerstickers.paper.ShulkerStickersPaper
 bootstrapper: io.github.jekitchen.shulkerstickers.paper.ShulkerStickersBootstrap
 api-version: '26.3'
 folia-supported: true
+dependencies:
+  server:
+    # Claim plugins we ask directly when they're installed (owner decision 3).
+    GriefPrevention: { load: BEFORE, required: false, join-classpath: true }
+    WorldGuard: { load: BEFORE, required: false, join-classpath: true }
+    Lands: { load: BEFORE, required: false, join-classpath: true }
+    Towny: { load: BEFORE, required: false, join-classpath: true }
 description: Recolor, label and rename placed shulker boxes. Works with vanilla clients.
 authors: [jekitchen]
 website: https://github.com/jekitchen/mc-shulker-stickers

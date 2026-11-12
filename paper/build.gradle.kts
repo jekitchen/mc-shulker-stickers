@@ -10,7 +10,30 @@ base {
 
 repositories {
     maven("https://repo.papermc.io/repository/maven-public/") { name = "PaperMC" }
+    // Claim plugin APIs, compile-only (owner decision 3). Each is used only when installed.
+    maven("https://maven.enginehub.org/repo/") {
+        name = "EngineHub"
+        content { includeGroup("com.sk89q.worldguard"); includeGroup("com.sk89q.worldedit"); includeGroupByRegex("org[.]enginehub.*") }
+    }
+    maven("https://repo.glaremasters.me/repository/towny/") {
+        name = "Towny"
+        content { includeGroup("com.palmergames.bukkit.towny") }
+    }
+    maven("https://jitpack.io") {
+        name = "JitPack"
+        content { includeGroup("com.github.angeschossen"); includeGroup("com.github.GriefPrevention") }
+    }
 }
+
+val claimApis = listOf(
+    "com.sk89q.worldguard:worldguard-core:${property("worldguard_version")}",
+    "com.sk89q.worldguard:worldguard-bukkit:${property("worldguard_version")}",
+    "com.sk89q.worldedit:worldedit-core:${property("worldedit_version")}",
+    "com.sk89q.worldedit:worldedit-bukkit:${property("worldedit_version")}",
+    "com.palmergames.bukkit.towny:towny:${property("towny_version")}",
+    "com.github.angeschossen:LandsAPI:${property("lands_api_version")}",
+    "com.github.GriefPrevention:GriefPrevention:${property("griefprevention_version")}",
+)
 
 val shade = configurations.create("shade")
 
@@ -18,6 +41,7 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:${property("paper_api_version")}")
     implementation(project(":core"))
     shade(project(":core"))
+    claimApis.forEach { compileOnly(it) { isTransitive = false } }
 
     testImplementation("io.papermc.paper:paper-api:${property("paper_api_version")}")
     testImplementation("org.mockbukkit.mockbukkit:mockbukkit-v26.3:${property("mockbukkit_version")}")
