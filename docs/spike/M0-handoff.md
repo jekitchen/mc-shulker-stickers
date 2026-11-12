@@ -40,6 +40,15 @@ All eleven v0.4 proposals are decided (`docs/PRD.md` §12) and built:
 
 Start a server with `./gradlew :fabric:runServer`, `:paper:runServer` or `:paper:runCanvas` and join with an unmodded 26.3 client. Hold cobblestone in the off-hand.
 
+**Shortcut: the showcase.** Copy `showcase/shulker_stickers_showcase` into the server's `world/datapacks/` folder (`fabric/run/world/datapacks` or `paper/run/world/datapacks`) and run `/reload`. Then stand on open, flat ground as an operator and run `/function shulker_stickers_showcase:build`. On Paper, also run `/shulkerstickers reload` so the plugin draws boxes made by commands. It builds four rows of decorated boxes south of you:
+
+| Row | Contents | Checks |
+|---|---|---|
+| 1 | Every facing, with the icon on the lid | 4, 7 |
+| 2 | Side faces, and the lid icon turned four ways | 4 |
+| 3 | Icon looks: dyed armor, glint, a head, a banner; a name-only box, a long name, a hidden name | 5, 6 |
+| 4 | A box locked with a stick (the key is in the chest next to it), and a plain box to decorate | 1–3, 10 |
+
 1. **Gesture:** sneak + right-click a placed box with an empty main hand opens "Edit: …". With a block in the off-hand, no block is placed and no ghost block shows.
 2. **Menu safety:** try shift-click, number keys, F, double-click, drag, Q and clicking outside the window. Nothing leaves the editor and no ghost items appear.
 3. **Rename screen:** type a name and click the result slot at 0 XP. It must work at repair cost 0, the paper must never reach the inventory, and Esc must return to a working editor.

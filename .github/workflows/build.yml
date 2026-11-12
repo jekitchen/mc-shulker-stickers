@@ -63,6 +63,9 @@ jobs:
       - name: Smoke test the Fabric jar
         run: scripts/fabric-smoke.sh
 
+      - name: Showcase datapack loads and builds
+        run: scripts/showcase-check.sh
+
       - name: Upload server log
         if: always()
         uses: actions/upload-artifact@v7

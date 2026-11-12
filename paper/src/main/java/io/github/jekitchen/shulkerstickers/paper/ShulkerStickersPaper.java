@@ -29,7 +29,7 @@ public final class ShulkerStickersPaper extends JavaPlugin {
         pm.registerEvents(lootGuard, this);
         lootGuard.checkWorldDatapacks();
 
-        StickerCommands commands = new StickerCommands(this, settings, displays);
+        StickerCommands commands = new StickerCommands(this, settings, displays, displayListener::processLoadedChunks);
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
                 event.registrar().register(commands.build(), "Shulker Stickers commands", List.of()));
 

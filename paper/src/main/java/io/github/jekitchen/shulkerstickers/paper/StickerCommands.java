@@ -32,10 +32,18 @@ final class StickerCommands {
     private final Settings settings;
     private final DisplayManager displays;
 
+    /** Runs the chunk-load pass on every loaded chunk (draws boxes made by commands or WorldEdit). */
+    private final Runnable rescanLoadedChunks;
+
     StickerCommands(Plugin plugin, Settings settings, DisplayManager displays) {
+        this(plugin, settings, displays, () -> {});
+    }
+
+    StickerCommands(Plugin plugin, Settings settings, DisplayManager displays, Runnable rescanLoadedChunks) {
         this.plugin = plugin;
         this.settings = settings;
         this.displays = displays;
+        this.rescanLoadedChunks = rescanLoadedChunks;
     }
 
     LiteralCommandNode<CommandSourceStack> build() {
@@ -82,6 +90,9 @@ final class StickerCommands {
     void reload(CommandSender sender) {
         List<String> warnings = settings.reload();
         displays.refreshAllLater();
+        // Nothing tells the plugin about boxes made by /setblock, /clone, structures or WorldEdit in
+        // a loaded chunk; a reload finds and draws them (otherwise they're drawn at the next chunk load).
+        rescanLoadedChunks.run();
         sender.sendMessage(warnings.isEmpty()
                 ? Texts.text(sender, NamedTextColor.GREEN, TextKeys.RELOAD_DONE)
                 : Texts.text(sender, NamedTextColor.YELLOW, TextKeys.RELOAD_WARNINGS, warnings.size()));

@@ -64,6 +64,22 @@ class ReloadCommandTest {
                 PlainTextComponentSerializer.plainText().serialize(admin.nextComponentMessage()));
     }
 
+    /** Boxes made by /setblock, /clone or WorldEdit in a loaded chunk are found and drawn by a reload. */
+    @Test
+    void reloadRescansTheLoadedChunks() throws IOException {
+        Path file = dir.resolve("config.json");
+        Files.writeString(file, "{}");
+        Settings settings = new Settings(file, Logger.getLogger("test"));
+        settings.reload();
+        java.util.concurrent.atomic.AtomicInteger rescans = new java.util.concurrent.atomic.AtomicInteger();
+        StickerCommands commands = new StickerCommands(plugin, settings, new DisplayManager(plugin, settings),
+                rescans::incrementAndGet);
+
+        commands.reload(server.addPlayer());
+
+        assertEquals(1, rescans.get());
+    }
+
     @Test
     void reloadWithAMistakeSaysHowManyWarnings() throws IOException {
         Path file = dir.resolve("config.json");
