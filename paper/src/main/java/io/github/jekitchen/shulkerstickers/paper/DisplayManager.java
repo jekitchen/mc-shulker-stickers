@@ -114,14 +114,42 @@ class DisplayManager {
         refresh(block);
     }
 
-    void refreshLater(BlockKey key, long delayTicks) {
+    /**
+     * Schedules one delayed refresh per box: while one is waiting, more requests for the same box
+     * are dropped (a player opening and closing a box quickly would otherwise queue a redraw, and
+     * respawned displays, for every close).
+     */
+    /** @return whether a refresh was scheduled (false: one is already waiting for this box) */
+    boolean refreshLater(BlockKey key, long delayTicks) {
         Location location = key.location();
         if (location == null) {
-            return;
+            return false;
         }
-        plugin.getServer().getRegionScheduler().runDelayed(plugin, location, t -> refreshIfLoaded(location.getBlock()),
-                Math.max(1, delayTicks));
+        long ticks = Math.max(1, delayTicks);
+        long now = System.nanoTime();
+        // The mark expires a few seconds after the refresh was due, so a refresh that never ran
+        // (its region unloaded first) can't block this box's refreshes for good.
+        long expires = now + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(ticks * 50 + 5_000);
+        boolean[] scheduled = {false};
+        delayedRefreshes.compute(key, (k, until) -> {
+            if (until != null && now < until) {
+                return until;
+            }
+            scheduled[0] = true;
+            return expires;
+        });
+        if (!scheduled[0]) {
+            return false;
+        }
+        plugin.getServer().getRegionScheduler().runDelayed(plugin, location, t -> {
+            delayedRefreshes.remove(key, expires);
+            refreshIfLoaded(location.getBlock());
+        }, ticks);
+        return true;
     }
+
+    /** Boxes with a delayed refresh waiting, and when that wait counts as stale (see {@link #refreshLater(BlockKey, long)}). */
+    private final Map<BlockKey, Long> delayedRefreshes = new ConcurrentHashMap<>();
 
     void removeLater(Block block) {
         plugin.getServer().getRegionScheduler().execute(plugin, block.getLocation(), () -> forget(BlockKey.of(block)));
