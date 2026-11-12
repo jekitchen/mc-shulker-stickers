@@ -44,3 +44,34 @@ jobs:
           path: |
             **/build/reports/tests/
             **/build/test-results/
+
+  # The Paper plugin's built-in checks on real servers (Paper, Folia, Canvas, and Paper with
+  # real WorldGuard and GriefPrevention). Each server starts, runs the checks and stops.
+  selftest:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [runServer, runFolia, runCanvas, runClaims]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Self-test on ${{ matrix.task }}
+        run: scripts/selftest.sh ${{ matrix.task }}
+
+      - name: Upload server log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: selftest-${{ matrix.task }}
+          path: build/selftest/
+          if-no-files-found: ignore
