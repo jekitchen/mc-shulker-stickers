@@ -81,11 +81,15 @@ Drops: the built-in datapack's 17 loot tables now also copy `face` and `name_hid
 
 ## Protection approach (claims)
 
-**Decision:** for 0.1, claim plugins are honored only through the `PlayerInteractEvent` they already cancel. The gesture listener runs at `HIGH` and refuses when `useInteractedBlock() == DENY`, so any plugin that denies the right-click at LOW, NORMAL or HIGH blocks the editor. I don't fire fake `BlockBreakEvent` or `BlockPlaceEvent` events, because logging plugins such as CoreProtect record them at MONITOR (with `ignoreCancelled`) and would log edits that never happened.
+**Owner decision 3 (built 11 Nov 2026).** Three layers, in order:
 
-**Gap:** a claim that allows "container access" but not "build" lets the click through, so PRD §9's "container access but not build → refused" isn't met for those plugins. The PRD already moves claim integrations to 0.2. The clean fix is soft hooks for each plugin's own API (WorldGuard `RegionQuery#testBuild`, GriefPrevention `Claim#checkPermission(..., ClaimPermission.Build)`, Lands `LandWorld#hasRoleFlag`, HuskClaims `canBuild`/operation types). Each would be compile-only and loaded only if the plugin is present.
+1. **The cancelled right-click.** The gesture listener runs at `HIGH` and refuses when `useInteractedBlock() == DENY`, so any plugin that denies the right-click blocks the editor.
+2. **Built-in checks for GriefPrevention, WorldGuard, Lands and Towny** when they're installed (`paper/.../claims/`). Each is compile-only, declared as an optional `join-classpath` dependency, and loaded only if the plugin is enabled. They ask for *build* permission: GriefPrevention `Claim#checkPermission(player, Build)` (skipped outside claims and for `/ignoreclaims`), WorldGuard `RegionQuery#testBuild` (skipped with region bypass), Lands `Area#hasRoleFlag(BLOCK_PLACE)`, Towny `PlayerCacheUtil#getCachePermission(BUILD)`. A hook that fails to load or throws **refuses** and logs once.
+3. **`protection.simulate_place_event`** (off by default) fires a `ClaimTestPlaceEvent` (a `BlockPlaceEvent` subclass) for every other claim plugin. Our own listeners ignore it. It's off because logging plugins such as CoreProtect can record it as a real placement, and rolling that player back would delete the box.
 
-Claims are also not re-checked at Save (only when the editor opens). The editor closes once the player walks out of reach, so this window is small.
+Claims are checked when the editor opens and again at Save (integrations only; the test event fires once per edit, at open).
+
+**Tested:** stand-in checks in `ClaimsTest` (MockBukkit), and `./gradlew :paper:runClaims -Pselftest`, which runs Paper 26.3 with the real WorldEdit 7.4.6, WorldGuard 7.0.21 and GriefPrevention 16.18.8 and checks that our hooks load and call their APIs. **Still needs a client:** a real player in a real claim or region (build-trusted vs container-trusted). Lands is premium and Towny has no 26.3 build on Modrinth yet, so those two are compile-checked only.
 
 ## Manual checks with a vanilla 26.3 client
 
@@ -120,8 +124,6 @@ Run `./gradlew :paper:runServer` (and `:paper:runCanvas`), join with an unmodded
 
 ## Not done
 
-- Per-plugin claim hooks (0.2, see above).
-- Re-checking claims at Save.
 - Using the lid animation state (open/close events are used instead).
 - Reach is checked every 10 ticks rather than every tick.
 - The rename screen and icon orientation still need a real client.

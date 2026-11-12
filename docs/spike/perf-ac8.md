@@ -69,7 +69,7 @@ Re-measured 11 Nov 2026 with the same wall ("after" window, 200 ticks). `-Pnearb
 | 1,000 decorated boxes, **player near all of them** (simulated) | 1.135 ms | 1.092 ms | 0.041 ms |
 
 - **No player near: our cost is about 0.03–0.04 ms/tick, under budget on both.** On Paper the wall still adds about 0.2 ms over plain boxes. The untracked run shows the same 0.2 ms, so it's the server's own cost for boxes that carry data (most likely Paper's chunk saving), not the plugin's. Canvas doesn't show it.
-- **A player in view of all 1,000 boxes: still about 0.7 ms**, the cost of 2,000 display entities. That is a real 1,000-box wall in front of a player, so AC-8 isn't met for that case on Paper/Canvas. Options 2 and 3 below remain for the owner. The `name.view_range` default (16) already means a player at a big wall sees only part of the names.
+- **A player in view of all 1,000 boxes: still about 0.7 ms**, the cost of 2,000 display entities. That is a real 1,000-box wall in front of a player, so AC-8 isn't met for that case on Paper/Canvas. **Owner decision 6:** accepted for 0.1, with the `name.view_range` default lowered from 16 to 10, which brings the worst case to roughly 0.5 ms. The real fix is chosen in the 0.2 performance pass, after profiling with real players.
 - **One-off costs:** spawning 2,000 displays took 90–96 ms, now when a player arrives rather than at chunk load.
 
 ## What would bring Paper/Canvas under budget
