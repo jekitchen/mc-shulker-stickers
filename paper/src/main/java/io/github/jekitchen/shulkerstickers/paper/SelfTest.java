@@ -881,6 +881,15 @@ final class SelfTest {
         org.bukkit.inventory.InventoryView view = stub(org.bukkit.inventory.InventoryView.class,
                 java.util.Map.of("getTopInventory", inventory, "getPlayer", viewer));
         DisplayListener listener = new DisplayListener(plugin, settings, displays);
+        // A spectator first: vanilla doesn't move the lid for spectators, so neither do we.
+        org.bukkit.entity.HumanEntity spectator = stub(org.bukkit.entity.HumanEntity.class,
+                java.util.Map.of("getGameMode", org.bukkit.GameMode.SPECTATOR));
+        org.bukkit.inventory.InventoryView spectatorView = stub(org.bukkit.inventory.InventoryView.class,
+                java.util.Map.of("getTopInventory", inventory, "getPlayer", spectator));
+        listener.onOpen(new org.bukkit.event.inventory.InventoryOpenEvent(spectatorView));
+        Bukkit.getRegionScheduler().runDelayed(plugin, origin, t0 -> {
+        check("PRD 5.5: a spectator opening the box doesn't move the lid displays (lid " + displays.lidTenths(key) + "/10)",
+                displays.lidTenths(key) == 0);
         inventory.getViewers().add(viewer);
         listener.onOpen(new org.bukkit.event.inventory.InventoryOpenEvent(view));
         Bukkit.getRegionScheduler().runDelayed(plugin, origin, t1 -> {
@@ -930,6 +939,7 @@ final class SelfTest {
                 then.run();
             }, 15);
         }, 15);
+        }, 5);
     }
 
     /**

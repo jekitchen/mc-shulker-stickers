@@ -55,9 +55,9 @@ fi
 # A step that throws before its checks run still ends with fail=0, so require at least the
 # number of checks each server runs today. Raise these when checks are added.
 case "$task" in
-    runServer) min=60 ;;
-    runClaims) min=59 ;; # GriefPrevention stops the piston checks
-    runFolia|runCanvas) min=58 ;;
+    runServer) min=61 ;;
+    runClaims) min=60 ;; # GriefPrevention stops the piston checks
+    runFolia|runCanvas) min=59 ;;
     *) min=1 ;;
 esac
 min="${SELFTEST_MIN:-$min}"

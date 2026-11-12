@@ -44,20 +44,42 @@ final class DisplayListener implements Listener {
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     void onOpen(InventoryOpenEvent event) {
-        if (event.getInventory().getHolder(false) instanceof ShulkerBox box) {
+        // Vanilla doesn't move the lid for spectators (ShulkerBoxBlockEntity#startOpen).
+        if (event.getInventory().getHolder(false) instanceof ShulkerBox box && !isSpectator(event.getPlayer())) {
             Block block = box.getBlock();
-            plugin.getServer().getRegionScheduler().execute(plugin, block.getLocation(),
-                    () -> displays.opened(BlockKey.of(block)));
+            onBoxThread(block, () -> displays.opened(BlockKey.of(block)));
         }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     void onClose(InventoryCloseEvent event) {
-        if (event.getInventory().getHolder(false) instanceof ShulkerBox box) {
-            // A tick later, so the closing player is no longer listed as a viewer.
+        if (!(event.getInventory().getHolder(false) instanceof ShulkerBox box) || isSpectator(event.getPlayer())) {
+            return;
+        }
+        // The lid starts down as soon as the last (non-spectator) viewer closes, like vanilla's
+        // stopOpen; the closing player may still be listed as a viewer during this event.
+        if (!othersKeepItOpen(event.getInventory().getViewers(), event.getPlayer())) {
             Block block = box.getBlock();
-            plugin.getServer().getRegionScheduler().runDelayed(plugin, block.getLocation(),
-                    t -> displays.closed(BlockKey.of(block), LID_CLOSE_TICKS - 1), 1);
+            onBoxThread(block, () -> displays.closed(BlockKey.of(block), LID_CLOSE_TICKS));
+        }
+    }
+
+    /** Whether anyone besides {@code closing} (spectators don't count, as in vanilla) still has the box open. */
+    static boolean othersKeepItOpen(java.util.List<org.bukkit.entity.HumanEntity> viewers,
+            org.bukkit.entity.HumanEntity closing) {
+        return viewers.stream().anyMatch(viewer -> viewer != closing && !isSpectator(viewer));
+    }
+
+    static boolean isSpectator(org.bukkit.entity.HumanEntity who) {
+        return who != null && who.getGameMode() == org.bukkit.GameMode.SPECTATOR;
+    }
+
+    /** Runs now if this thread owns the box's region (so the lid keeps step with vanilla's), else there. */
+    private void onBoxThread(Block block, Runnable task) {
+        if (plugin.getServer().isOwnedByCurrentRegion(block.getLocation())) {
+            task.run();
+        } else {
+            plugin.getServer().getRegionScheduler().execute(plugin, block.getLocation(), task);
         }
     }
 

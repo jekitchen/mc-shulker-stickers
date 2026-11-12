@@ -209,7 +209,13 @@ public final class StickerDisplays {
                     continue;
                 }
                 if (lid != null) {
-                    float progress = box.getProgress(1.0f);
+                    // The pose set now reaches players with Polymer's update next tick, a tick after
+                    // the lid's own block event, so aim one step ahead while the lid is moving.
+                    float progress = switch (box.getAnimationStatus()) {
+                        case OPENING -> Math.min(1f, box.getProgress(1.0f) + LidMotion.STEP);
+                        case CLOSING -> Math.max(0f, box.getProgress(1.0f) - LidMotion.STEP);
+                        default -> box.getProgress(1.0f);
+                    };
                     if (progress != lid.shown) {
                         lid.moveTo(progress, true);
                     }
@@ -278,7 +284,9 @@ public final class StickerDisplays {
      */
     private static net.minecraft.world.level.block.entity.@Nullable BlockEntity loadedBox(ServerLevel level, BlockPos pos) {
         LevelChunk chunk = loadedChunk(level, pos);
-        return chunk == null ? null : chunk.getBlockEntity(pos);
+        // The chunk's own map: unlike getBlockEntity, it never creates a pending block entity (which
+        // would fire the load event while the per-tick pass walks the drawn boxes).
+        return chunk == null ? null : chunk.getBlockEntities().get(pos);
     }
 
     /** The chunk at {@code pos} if it is fully loaded; never loads it or waits for it. */

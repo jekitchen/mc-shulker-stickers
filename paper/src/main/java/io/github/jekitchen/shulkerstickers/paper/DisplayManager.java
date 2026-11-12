@@ -278,6 +278,12 @@ class DisplayManager {
         Drawn drawn = new Drawn(spawned, drawIcon, drawName, false, outside, lid);
         displays.put(key, drawn);
         LidState state = lids.get(key);
+        boolean openByAnyone = box.getInventory().getViewers().stream()
+                .anyMatch(v -> v.getGameMode() != org.bukkit.GameMode.SPECTATOR);
+        if (state != null && state.task == null && !openByAnyone) {
+            lids.remove(key); // left open by a close we never saw; the lid is shut
+            state = null;
+        }
         if (lid != null && state != null && state.tenths > 0) {
             poseLid(lid, state.tenths, false); // drawn while the box is (partly) open
         }
@@ -314,13 +320,13 @@ class DisplayManager {
     }
 
     /**
-     * Region thread, a tick after a viewer closed the box. If nobody has it open any more, the
-     * lid comes down, and side displays hidden while it was open are drawn again once it's shut.
+     * Region thread. The last (non-spectator) viewer closed the box: the lid comes down, and side
+     * displays hidden while it was open are drawn again once it's shut.
      */
     void closed(BlockKey key, long lidCloseTicks) {
         Location location = key.location();
-        if (location == null || !(location.getBlock().getState(false) instanceof ShulkerBox box)
-                || !box.getInventory().getViewers().isEmpty()) {
+        if (location == null || !(location.getBlock().getState(false) instanceof ShulkerBox)) {
+            stopLid(key); // removed while open without an event we see (/setblock, WorldEdit)
             return;
         }
         moveLid(key, false);
@@ -330,38 +336,51 @@ class DisplayManager {
         }
     }
 
-    /** Starts the lid moving towards open or shut, one tenth per tick. */
+    /**
+     * Starts the lid moving towards open or shut, one tenth per tick, taking the first step now
+     * (vanilla moves the lid in the tick it opens or closes). Only for boxes we draw.
+     */
     private void moveLid(BlockKey key, boolean opening) {
         Location location = key.location();
-        if (location == null) {
+        if (location == null || (!tracked.containsKey(key) && !lids.containsKey(key))) {
             return;
         }
         LidState state = lids.computeIfAbsent(key, k -> new LidState());
+        boolean reversed = state.opening != opening;
         state.opening = opening;
-        if (state.task == null) {
-            state.task = plugin.getServer().getRegionScheduler().runAtFixedRate(plugin, location,
-                    task -> stepLid(key, task), 1, 1);
+        if (state.task != null) {
+            // Already moving: a reversal (reopened while closing, or the reverse) turns now.
+            if (reversed && stepLid(key, state)) {
+                cancelQuietly(state.task);
+                state.task = null;
+            }
+            return;
+        }
+        if (!stepLid(key, state)) {
+            state.task = plugin.getServer().getRegionScheduler().runAtFixedRate(plugin, location, task -> {
+                LidState current = lids.get(key);
+                if (current == null || current.task != task || stepLid(key, current)) {
+                    if (current != null && current.task == task) {
+                        current.task = null;
+                    }
+                    cancelQuietly(task);
+                }
+            }, 1, 1);
         }
     }
 
-    private void stepLid(BlockKey key, ScheduledTask task) {
-        LidState state = lids.get(key);
-        if (state == null || state.task != task) {
-            cancelQuietly(task);
-            return;
-        }
+    /** Moves the lid one tenth and poses its displays; true when it has reached open or shut. */
+    private boolean stepLid(BlockKey key, LidState state) {
         state.tenths = Math.clamp(state.tenths + (state.opening ? 1 : -1), 0, 10);
         Drawn drawn = displays.get(key);
         if (drawn != null && drawn.lid() != null) {
             poseLid(drawn.lid(), state.tenths, true);
         }
-        if (state.tenths == (state.opening ? 10 : 0)) {
-            state.task = null;
-            cancelQuietly(task);
-            if (state.tenths == 0) {
-                lids.remove(key);
-            }
+        boolean done = state.tenths == (state.opening ? 10 : 0);
+        if (done && state.tenths == 0) {
+            lids.remove(key);
         }
+        return done;
     }
 
     /** Lid progress in tenths (0 shut, 10 open); for tests. */
