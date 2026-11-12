@@ -24,7 +24,8 @@
       "io.github.jekitchen.shulkerstickers.fabric.test.MainHandGestureGameTests",
       "io.github.jekitchen.shulkerstickers.fabric.test.StagingGameTests",
       "io.github.jekitchen.shulkerstickers.fabric.test.ReloadGameTests",
-      "io.github.jekitchen.shulkerstickers.fabric.test.SpawnProtectionGameTests"
+      "io.github.jekitchen.shulkerstickers.fabric.test.SpawnProtectionGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.EdgeCaseGameTests"
     ]
   },
   "mixins": ["shulker_stickers_test.mixins.json"],

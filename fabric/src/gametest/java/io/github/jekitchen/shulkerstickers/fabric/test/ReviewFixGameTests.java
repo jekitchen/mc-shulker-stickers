@@ -31,11 +31,13 @@ import net.minecraft.network.DisconnectionDetails;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
+import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.inventory.AnvilMenu;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.CustomData;
+import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
@@ -211,18 +213,29 @@ public class ReviewFixGameTests {
     @GameTest
     public void saveIsRefusedWhenTheBoxWasReplacedBySameColoredBox(GameTestHelper helper) {
         TestBoxes.placePlain(helper, BOX, BoxColor.UNDYED, Direction.UP);
-        ServerPlayer player = TestPlayers.survival(helper);
+        BlockPos pos = helper.absolutePos(BOX);
+        TestPlayers.Watched watched = TestPlayers.watched(helper, GameType.SURVIVAL, "survivor");
+        ServerPlayer player = watched.player();
+        player.teleportTo(pos.getX() + 2.5, pos.getY(), pos.getZ() + 0.5);
         player.giveExperienceLevels(5);
         StickerConfig priced = ConfigLoader.parse("{\"color\":{\"cost\":{\"type\":\"xp_levels\",\"amount\":1}}}").config();
-        EditorMenu menu = EditorMenu.forBox(1, player, helper.getLevel(), helper.absolutePos(BOX), Direction.UP, priced);
-        menu.clicked(BoxColor.RED.ordinal(), 0, ContainerInput.PICKUP, player);
+        EditorLocks.tryAcquire(helper.getLevel(), pos, player);
+        player.openMenu(new SimpleMenuProvider((id, inventory, p) -> EditorMenu.forBox(id, player, helper.getLevel(), pos, Direction.UP, priced),
+                Component.literal("Edit")));
+        helper.assertTrue(player.containerMenu instanceof EditorMenu, "editor open");
+        click(player, BoxColor.RED.ordinal());
 
         helper.setBlock(BOX, Blocks.AIR);
         TestBoxes.placePlain(helper, BOX, BoxColor.UNDYED, Direction.UP);
-        menu.clicked(EditorLayout.SAVE, 0, ContainerInput.PICKUP, player);
+        watched.actionBar();
+        click(player, EditorLayout.SAVE);
 
         helper.assertBlockPresent(Blocks.SHULKER_BOX, BOX);
         helper.assertValueEqual(player.experienceLevel, 5, "nothing charged");
+        List<String> messages = watched.actionBar();
+        helper.assertTrue(messages.contains("The box was moved or broken; nothing was changed"), "box-gone message, got " + messages);
+        helper.assertTrue(player.containerMenu == player.inventoryMenu, "editor closed, was " + player.containerMenu);
+        helper.assertTrue(!EditorLocks.isHeldBy(helper.getLevel(), pos, player), "editor lock released");
         helper.succeed();
     }
 
