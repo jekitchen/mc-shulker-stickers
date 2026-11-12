@@ -88,6 +88,7 @@ final class SelfTest {
         placeDecoratedBox(box, BlockFace.EAST, ICON);
         lockKeyTests(box);
         migrationTests(box);
+        claimTests(box);
         boolean ok = true;
         String why = "";
         for (BoxColor color : BoxColor.values()) {
@@ -358,6 +359,19 @@ final class SelfTest {
                 !LockKeys.unlocksWith(state, wrong, plugin.getLogger())
                         && !LockKeys.unlocksWith(state, new ItemStack(Material.AIR), plugin.getLogger()));
         locked.setType(Material.AIR, false);
+    }
+
+    /** Owner decision 3, with real plugins installed ({@code :paper:runClaims -Pselftest}). */
+    private void claimTests(Block box) {
+        String expected = System.getProperty("shulkerstickers.selftest.claims", "");
+        if (expected.isBlank()) {
+            return;
+        }
+        var claims = io.github.jekitchen.shulkerstickers.paper.claims.Claims.detect(plugin);
+        java.util.List<String> want = java.util.List.of(expected.split(","));
+        check("claim plugins detected: " + claims.plugins(), claims.plugins().containsAll(want));
+        java.util.List<String> failed = claims.probeFailures(box);
+        check("claim hooks call the installed plugins' APIs" + (failed.isEmpty() ? "" : ": " + failed), failed.isEmpty());
     }
 
     /** Owner decision 4: a box saved by Fabric (sticker in custom_data only) is adopted on Paper. */

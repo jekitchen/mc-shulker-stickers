@@ -27,4 +27,10 @@ final class GriefPreventionCheck implements ClaimCheck {
         Claim claim = gp.dataStore.getClaimAt(block.getLocation(), false, null);
         return claim == null || claim.checkPermission(player, ClaimPermission.Build, null) == null;
     }
+
+    @Override
+    public void probe(Block block) {
+        GriefPrevention.instance.dataStore.getClaimAt(block.getLocation(), false, null);
+        ClaimPermission.Build.name();
+    }
 }

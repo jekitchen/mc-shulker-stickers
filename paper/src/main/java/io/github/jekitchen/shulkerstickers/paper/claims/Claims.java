@@ -74,6 +74,22 @@ public final class Claims {
         return checks.stream().map(ClaimCheck::plugin).toList();
     }
 
+    /** Self-test: the plugins whose hook failed to call its API at {@code block}. */
+    public List<String> probeFailures(Block block) {
+        List<String> failed = new ArrayList<>();
+        for (ClaimCheck check : checks) {
+            try {
+                check.probe(block);
+                if (check instanceof Refuse) {
+                    failed.add(check.plugin() + " (hook didn't load)");
+                }
+            } catch (RuntimeException | LinkageError e) {
+                failed.add(check.plugin() + " (" + e + ")");
+            }
+        }
+        return failed;
+    }
+
     /** Region thread of {@code box}. True if every check lets the player build at the box. */
     public boolean mayEdit(Player player, Block box, boolean simulatePlaceEvent) {
         for (ClaimCheck check : checks) {

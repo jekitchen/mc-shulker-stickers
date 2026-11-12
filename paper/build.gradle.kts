@@ -95,6 +95,22 @@ tasks.register<RunServer>("runCanvas") {
     runDirectory = layout.projectDirectory.dir("run-canvas")
 }
 
+// Paper with real claim plugins (owner decision 3): WorldEdit + WorldGuard and GriefPrevention,
+// the 26.3 builds from Modrinth. With -Pselftest it also checks our hooks load and call them.
+tasks.register<RunServer>("runClaims") {
+    group = "run paper"
+    description = "Runs Paper with WorldGuard and GriefPrevention installed."
+    minecraftVersion(project.property("minecraft_version") as String)
+    pluginJars(tasks.jar.flatMap { it.archiveFile })
+    downloadPlugins {
+        url("https://cdn.modrinth.com/data/1u6JkXh5/versions/YFnqiUlL/worldedit-bukkit-7.4.6.jar")
+        url("https://cdn.modrinth.com/data/DKY9btbd/versions/fiHLM6oY/worldguard-bukkit-7.0.21.jar")
+        url("https://cdn.modrinth.com/data/O4o4mKaq/versions/MtwPHMAS/GriefPrevention.jar")
+    }
+    runDirectory = layout.projectDirectory.dir("run-claims")
+    jvmArgs("-Dshulkerstickers.selftest.claims=GriefPrevention,WorldGuard")
+}
+
 // `-Pselftest`: accept the EULA, run the spike self-test, then shut the server down.
 if (providers.gradleProperty("selftest").isPresent) {
     tasks.withType<RunServer>().configureEach {

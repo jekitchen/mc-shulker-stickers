@@ -25,4 +25,11 @@ final class WorldGuardCheck implements ClaimCheck {
         return platform.getRegionContainer().createQuery()
                 .testBuild(BukkitAdapter.adapt(block.getLocation().add(0.5, 0.5, 0.5)), local);
     }
+
+    @Override
+    public void probe(Block block) {
+        WorldGuardPlugin.inst();
+        WorldGuard.getInstance().getPlatform().getRegionContainer().createQuery()
+                .getApplicableRegions(BukkitAdapter.adapt(block.getLocation()));
+    }
 }
