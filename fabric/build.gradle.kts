@@ -61,3 +61,8 @@ if (providers.gradleProperty("perftest").isPresent) {
         (this as JavaExec).jvmArgs("-Dshulkerstickers.perftest=true")
     }
 }
+
+// Polymer is bundled (LGPL-3.0): ship the license texts its notice points to.
+tasks.jar {
+    from(rootProject.file("licenses")) { into("META-INF/licenses") }
+}

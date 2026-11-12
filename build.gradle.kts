@@ -29,4 +29,13 @@ subprojects {
     tasks.withType<Test>().configureEach {
         useJUnitPlatform()
     }
+
+    // Every jar we ship carries our license and the third-party notices.
+    tasks.named<Jar>("jar") {
+        from(rootProject.file("LICENSE")) {
+            into("META-INF")
+            rename { "LICENSE_shulker_stickers.txt" }
+        }
+        from(rootProject.file("THIRD_PARTY_NOTICES.md")) { into("META-INF") }
+    }
 }
