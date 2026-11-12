@@ -1,4 +1,4 @@
-# Shulker Stickers
+# <img src="docs/images/icon-512.png" alt="" width="48"> Shulker Stickers
 
 Organize your shulker boxes at a glance. Sneak and right-click a placed shulker box with an empty hand to open the **Sticker editor**, where you can:
 
@@ -20,7 +20,7 @@ Everything runs on the server. Players need **no client mod** to see icons and n
 | Paper and its forks | `shulker-stickers-paper` plugin | Nothing else |
 | Folia / Canvas | the same Paper plugin | Nothing else |
 
-Minecraft **26.3** or newer, Java 25.
+Minecraft **26.3.x**, Java 25. The Fabric mod refuses to load on 26.4 or later: the Polymer it bundles is built for 26.3 only.
 
 Sticker data uses the same format on every platform, so stickered items keep their stickers when moved between Fabric and Paper servers.
 
