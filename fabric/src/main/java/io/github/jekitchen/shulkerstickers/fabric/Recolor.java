@@ -53,7 +53,9 @@ public final class Recolor {
         if (!(level.getBlockEntity(pos) instanceof ShulkerBoxBlockEntity newBox)) {
             throw new IllegalStateException("No shulker box block entity after recolor at " + pos);
         }
-        newBox.loadWithComponents(TagValueInput.create(ProblemReporter.DISCARDING, level.registryAccess(), saved));
+        // Our own write: the caller redraws the box, so the load hook mustn't queue another redraw.
+        io.github.jekitchen.shulkerstickers.fabric.data.StickerData.asOwnWrite(() -> newBox.loadWithComponents(
+                TagValueInput.create(ProblemReporter.DISCARDING, level.registryAccess(), saved)));
         newBox.setChanged();
         level.updateNeighbourForOutputSignal(pos, newState.getBlock());
         return Result.OK;

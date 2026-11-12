@@ -149,29 +149,36 @@ public final class StickerData {
                 tag.put(StickerFormat.BUKKIT_VALUES, bukkit);
             }
         });
-        writing = true;
-        try {
-            blockEntity.setComponents(DataComponentMap.builder()
-                    .addAll(blockEntity.components())
-                    .set(DataComponents.CUSTOM_DATA, updated.isEmpty() ? null : updated)
-                    .build());
-        } finally {
-            writing = false;
-        }
+        asOwnWrite(() -> blockEntity.setComponents(DataComponentMap.builder()
+                .addAll(blockEntity.components())
+                .set(DataComponents.CUSTOM_DATA, updated.isEmpty() ? null : updated)
+                .build()));
         if (markChanged) {
             blockEntity.setChanged();
         }
     }
 
-    /** True while this class writes a box's components; set and read on the server thread only. */
-    private static boolean writing;
+    /** True on a thread while it runs one of our own writes. Per thread: worldgen threads load boxes too. */
+    private static final ThreadLocal<Boolean> WRITING = ThreadLocal.withInitial(() -> false);
+
+    /** Runs {@code write} as our own write (see {@link #isOwnWrite}); nesting is fine. */
+    public static void asOwnWrite(Runnable write) {
+        boolean outer = WRITING.get();
+        WRITING.set(true);
+        try {
+            write.run();
+        } finally {
+            WRITING.set(outer);
+        }
+    }
 
     /**
-     * Whether a component change comes from our own write. Our callers redraw the box themselves;
-     * other changes (for example {@code /clone}) get a redraw from {@code BlockEntityLoadMixin}.
+     * Whether a box's data is being changed by our own code. Our callers redraw the box
+     * themselves; other changes (for example {@code /clone}) get a redraw from
+     * {@code BlockEntityLoadMixin}.
      */
     public static boolean isOwnWrite() {
-        return writing;
+        return WRITING.get();
     }
 
     private static CompoundTag bukkitValues(@Nullable CustomData data) {

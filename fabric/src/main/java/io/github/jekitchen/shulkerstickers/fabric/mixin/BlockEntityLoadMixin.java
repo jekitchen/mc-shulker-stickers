@@ -35,7 +35,9 @@ abstract class BlockEntityLoadMixin {
         if ((Object) this instanceof ShulkerBoxBlockEntity box) {
             input.read(StickerFormat.BUKKIT_VALUES, CompoundTag.CODEC)
                     .ifPresent(paperValues -> StickerData.adoptPaperValues(box, paperValues));
-            redrawIfPlaced(box);
+            if (!StickerData.isOwnWrite()) {
+                redrawIfPlaced(box);
+            }
         }
     }
 

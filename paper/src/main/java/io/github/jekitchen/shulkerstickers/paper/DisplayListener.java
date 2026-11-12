@@ -70,7 +70,9 @@ final class DisplayListener implements Listener {
             org.bukkit.Chunk[] loaded;
             try {
                 loaded = world.getLoadedChunks();
-            } catch (UnsupportedOperationException e) {
+            } catch (RuntimeException e) {
+                // Paper, Folia and Canvas 26.3 allow this from the enable thread; a fork that
+                // doesn't must not stop the plugin from enabling.
                 plugin.getLogger().warning("Can't list the loaded chunks of " + world.getName()
                         + " (" + e.getMessage() + "); boxes in them are drawn when their chunks next load");
                 continue;

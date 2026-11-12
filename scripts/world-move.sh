@@ -66,7 +66,7 @@ feed() {
 }
 
 finish() { # after a run: plain text, and it must have got through the commands
-    sed -i -E 's/\x1b\[[0-9;]*m//g' "$log"
+    sed -i -E 's/\x1b\[[0-9;]*m//g; s/\r$//' "$log"
     seen 'Done \([0-9.]+s\)!' || fail "the server did not start"
     seen 'END-OF-CHECKS' || fail "the console commands did not finish"
 }
@@ -118,6 +118,8 @@ echo "2. Paper: the same world"
 cp -r "$fabric/world" "$paper/world"
 log="$dir/paper.log"
 : > "$log"
+# The data commands answer in order (one line each), so answers are read by position. (A "say"
+# marker can't be used to separate them: Paper prints chat after the command answers.)
 feed \
     "WAIT 3" \
     "data get block 1 -50 1 PublicBukkitValues" \
@@ -128,15 +130,19 @@ feed \
     | timeout --kill-after=30 $((limit + 120)) "$root/gradlew" -p "$root" :paper:runWorldMove --console=plain "$@" >> "$log" 2>&1
 finish
 expect '\[ShulkerStickers\]' "the plugin is loaded"
-# The first PublicBukkitValues answer is before the edit.
-first_pdc="$(grep -m1 -E 'has the following block data: \{.*shulker_stickers' "$log")"
-grep -q 'shulker_stickers:icon_id": "minecraft:diamond"' <<< "$first_pdc" \
-    || fail "Paper didn't move the Fabric sticker into its persistent data (first answer: ${first_pdc:-none})"
-echo "PASS Paper moved the Fabric sticker into its persistent data"; checks=$((checks + 1))
-expect_not 'has the following block data: \{"minecraft:custom_data": \{PublicBukkitValues: \{[^}]*shulker_stickers' \
-    "Paper removed the stale copy from custom_data"
-expect 'has the following block data: \[\{[^]]*count: 5' "the box's contents are intact on Paper"
-expect 'shulker_stickers:icon_id": "minecraft:emerald"' "the sticker was changed on Paper"
+mapfile -t answers < <(grep -E 'System chat: .*(has the following block data|Found no elements matching|Modified block data|Nothing changed|not a block entity)' "$log")
+[ "${#answers[@]}" -eq 5 ] || fail "expected 5 answers to the 5 data commands, got ${#answers[@]}: $(printf '%s | ' "${answers[@]}")"
+check_answer() { # index pattern message [negate]
+    local got="${answers[$1]}"
+    if grep -qE "$2" <<< "$got"; then [ -z "${4:-}" ] || fail "$3 (answer: $got)"
+    else [ -n "${4:-}" ] || fail "$3 (answer: $got)"; fi
+    echo "PASS $3"; checks=$((checks + 1))
+}
+check_answer 0 'has the following block data: \{.*shulker_stickers:icon_id": "minecraft:diamond"' "Paper moved the Fabric sticker into its persistent data"
+check_answer 1 'shulker_stickers' "Paper removed the stale copy from custom_data" negate
+check_answer 2 'has the following block data: \[\{[^]]*count: 5' "the box's contents are intact on Paper"
+check_answer 3 'Modified block data' "the sticker was changed on Paper"
+check_answer 4 'has the following block data: \{.*shulker_stickers:icon_id": "minecraft:emerald"' "Paper reads back the changed sticker"
 no_errors
 
 # 3. Back to Fabric.
