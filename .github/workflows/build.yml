@@ -60,6 +60,12 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
+      # The Fabric server launcher and Fabric API jars the scripts download (keyed by the versions).
+      - uses: actions/cache@v6
+        with:
+          path: build/fabric-smoke/cache
+          key: fabric-server-${{ hashFiles('gradle.properties') }}
+
       - name: Smoke test the Fabric jar
         run: scripts/fabric-smoke.sh
 
@@ -88,6 +94,12 @@ jobs:
           java-version: 25
 
       - uses: gradle/actions/setup-gradle@v6
+
+      # The Fabric server launcher and Fabric API jars the scripts download (keyed by the versions).
+      - uses: actions/cache@v6
+        with:
+          path: build/fabric-smoke/cache
+          key: fabric-server-${{ hashFiles('gradle.properties') }}
 
       - name: Move a world between Fabric and Paper
         run: scripts/world-move.sh
