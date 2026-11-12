@@ -66,7 +66,8 @@ class DisplayManager {
     record Parts(boolean icon, boolean name) {}
 
     /** What is drawn now. {@code hiddenOpen}: hidden because the box is open (shown again on close). */
-    private record Drawn(List<Entity> entities, boolean icon, boolean name, boolean hiddenOpen) {}
+    /** {@code outside}: the displays stand in a neighbouring chunk (see {@link #spawnSpot}) and can be lost with it. */
+    private record Drawn(List<Entity> entities, boolean icon, boolean name, boolean hiddenOpen, boolean outside) {}
 
     private record ChunkKey(UUID world, int x, int z) {
         static ChunkKey of(BlockKey key) {
@@ -163,7 +164,7 @@ class DisplayManager {
         track(key, new Parts(icon.isPresent(), name.isPresent()));
         ensureCheck(key);
         if (config.hideWhileOpen() && !box.getInventory().getViewers().isEmpty()) {
-            displays.put(key, new Drawn(List.of(), false, false, true));
+            displays.put(key, new Drawn(List.of(), false, false, true, false));
             return; // shown again when the last viewer closes the box
         }
         List<Vector> players = playersAround(block, config);
@@ -204,7 +205,8 @@ class DisplayManager {
                 display.setTransformation(transform(rotation, up, DisplayLayout.NAME_SCALE, shift));
             }));
         }
-        displays.put(key, new Drawn(spawned, drawIcon, drawName, false));
+        boolean outside = at.getBlockX() >> 4 != block.getX() >> 4 || at.getBlockZ() >> 4 != block.getZ() >> 4;
+        displays.put(key, new Drawn(spawned, drawIcon, drawName, false, outside));
     }
 
     private List<Vector> playersAround(Block block, StickerConfig config) {
@@ -295,7 +297,8 @@ class DisplayManager {
             boolean hasIcon = drawn != null && drawn.icon();
             boolean hasName = drawn != null && drawn.name();
             // A display standing in a neighbouring chunk is discarded when that chunk unloads; draw it again.
-            boolean lost = drawn != null && drawn.entities().stream()
+            // Only displays standing in a neighbouring chunk can be lost this way, so only those are looked at.
+            boolean lost = drawn != null && drawn.outside() && drawn.entities().stream()
                     .anyMatch(e -> !Bukkit.isOwnedByCurrentRegion(e) || !e.isValid());
             if (wantIcon != hasIcon || wantName != hasName || (lost && (wantIcon || wantName))) {
                 refresh(block);
@@ -323,7 +326,7 @@ class DisplayManager {
     void hideOpen(BlockKey key) {
         removeEntities(key);
         if (tracked.containsKey(key)) {
-            displays.put(key, new Drawn(List.of(), false, false, true));
+            displays.put(key, new Drawn(List.of(), false, false, true, false));
         }
     }
 
