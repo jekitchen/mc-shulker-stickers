@@ -107,8 +107,12 @@ class EdgeCasesTest {
     }
 
     private void gesture(PlayerMock who) {
+        gesture(who, BlockFace.UP);
+    }
+
+    private void gesture(PlayerMock who, BlockFace clicked) {
         server.getPluginManager().callEvent(new PlayerInteractEvent(
-                who, Action.RIGHT_CLICK_BLOCK, null, box, BlockFace.UP, EquipmentSlot.HAND));
+                who, Action.RIGHT_CLICK_BLOCK, null, box, clicked, EquipmentSlot.HAND));
     }
 
     private void press(int slot) {
@@ -152,7 +156,9 @@ class EdgeCasesTest {
         PlayerMock viewer = server.addPlayer();
         viewer.openInventory(state().getInventory());
         player.getInventory().setItemInOffHand(new ItemStack(Material.COBBLESTONE, 5));
-        gesture(player);
+        // Clicked on a side, so the icon goes on a side face: side displays hide while the box is
+        // open (lid-face displays move with the lid instead; the self-test checks those).
+        gesture(player, BlockFace.NORTH);
         assertTrue(editorOpen(player));
 
         press(BoxColor.RED.ordinal());

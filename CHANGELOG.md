@@ -2,6 +2,10 @@
 
 Each release has a Fabric jar and a Paper jar (the Paper jar also runs on Folia and Canvas). Versions read `<version>+<Minecraft version>`.
 
+## Unreleased (planned for 0.2)
+
+- **Icons move with the lid:** when a box opens, the icon and name on its lid rise and turn with the lid, the same way vanilla moves the lid, instead of disappearing. Icons on the sides are still hidden while the box is open.
+
 ## 0.1.0-alpha.1 (not yet released)
 
 First alpha, for Minecraft 26.3. Server-side: players need no mod.

@@ -38,21 +38,26 @@ final class DisplayListener implements Listener {
         this.displays = displays;
     }
 
-    /** The lid rises when a box opens, so its displays are hidden while it's open (PRD §5.5). */
+    /**
+     * The lid rises when a box opens: displays on the lid face move with it, the others are
+     * hidden while it's open (PRD §5.5).
+     */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     void onOpen(InventoryOpenEvent event) {
-        if (settings.config().hideWhileOpen() && event.getInventory().getHolder(false) instanceof ShulkerBox box) {
+        if (event.getInventory().getHolder(false) instanceof ShulkerBox box) {
             Block block = box.getBlock();
             plugin.getServer().getRegionScheduler().execute(plugin, block.getLocation(),
-                    () -> displays.hideOpen(BlockKey.of(block)));
+                    () -> displays.opened(BlockKey.of(block)));
         }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     void onClose(InventoryCloseEvent event) {
         if (event.getInventory().getHolder(false) instanceof ShulkerBox box) {
-            // refresh() draws nothing while anyone still has the box open.
-            displays.refreshLater(BlockKey.of(box.getBlock()), LID_CLOSE_TICKS);
+            // A tick later, so the closing player is no longer listed as a viewer.
+            Block block = box.getBlock();
+            plugin.getServer().getRegionScheduler().runDelayed(plugin, block.getLocation(),
+                    t -> displays.closed(BlockKey.of(block), LID_CLOSE_TICKS - 1), 1);
         }
     }
 

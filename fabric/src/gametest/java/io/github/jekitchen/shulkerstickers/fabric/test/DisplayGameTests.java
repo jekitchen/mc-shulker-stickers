@@ -243,10 +243,12 @@ public class DisplayGameTests {
         BlockPos pos = helper.absolutePos(BOX);
         StickerDisplays.refresh(level, pos);
         helper.assertTrue(StickerDisplays.isOnLid(level, pos), "a lid icon is on the lid");
-        ItemDisplayElement icon = (ItemDisplayElement) elements(helper, BOX).stream()
+        // Looked up again at each check: other GameTests (a config reload) may redraw every box in
+        // the shared level, which replaces the elements (and poses the new ones at the lid's progress).
+        java.util.function.Supplier<ItemDisplayElement> iconNow = () -> (ItemDisplayElement) elements(helper, BOX).stream()
                 .filter(ItemDisplayElement.class::isInstance).findFirst().orElseThrow();
-        org.joml.Vector3f restTranslation = new org.joml.Vector3f(icon.getTranslation());
-        org.joml.Quaternionf restRotation = new org.joml.Quaternionf(icon.getLeftRotation());
+        org.joml.Vector3f restTranslation = new org.joml.Vector3f(iconNow.get().getTranslation());
+        org.joml.Quaternionf restRotation = new org.joml.Quaternionf(iconNow.get().getLeftRotation());
 
         ServerPlayer player = helper.makeMockServerPlayerInLevel();
         player.setItemInHand(InteractionHand.MAIN_HAND, new ItemStack(Items.DIAMOND)); // TestBoxes locks with a diamond
@@ -261,6 +263,7 @@ public class DisplayGameTests {
             org.joml.Vector3f expectedTranslation = new org.joml.Quaternionf().rotationY((float) Math.toRadians(-270))
                     .transform(new org.joml.Vector3f(0, (float) DisplayLayout.FACE_OFFSET, 0).add(restTranslation))
                     .sub(0, (float) DisplayLayout.FACE_OFFSET, 0).add(0, 0.5f, 0);
+            ItemDisplayElement icon = iconNow.get();
             helper.assertTrue(expectedTranslation.distance(new org.joml.Vector3f(icon.getTranslation())) < 1e-4f,
                     "open: the icon rose and turned with the lid (" + icon.getTranslation() + ", expected " + expectedTranslation + ")");
             org.joml.Quaternionf expectedRotation = new org.joml.Quaternionf().rotationY((float) Math.toRadians(-270)).mul(restRotation);
@@ -269,9 +272,10 @@ public class DisplayGameTests {
             player.closeContainer();
             helper.runAfterDelay(20, () -> {
                 helper.assertTrue(box.getProgress(1.0f) == 0.0f, "the box is closed again");
-                helper.assertTrue(restTranslation.distance(new org.joml.Vector3f(icon.getTranslation())) < 1e-4f
-                        && restRotation.equals(new org.joml.Quaternionf(icon.getLeftRotation()), 1e-4f),
-                        "closed: the icon is back at rest (" + icon.getTranslation() + ")");
+                ItemDisplayElement closed = iconNow.get();
+                helper.assertTrue(restTranslation.distance(new org.joml.Vector3f(closed.getTranslation())) < 1e-4f
+                        && restRotation.equals(new org.joml.Quaternionf(closed.getLeftRotation()), 1e-4f),
+                        "closed: the icon is back at rest (" + closed.getTranslation() + ")");
                 helper.succeed();
             });
         });
