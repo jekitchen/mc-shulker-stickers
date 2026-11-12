@@ -78,7 +78,8 @@ final class StickerCommands {
         player.sendMessage(Texts.text(player, NamedTextColor.GRAY, off ? TextKeys.TOGGLE_OFF : TextKeys.TOGGLE_ON));
     }
 
-    private void reload(CommandSender sender) {
+    /** {@code /shulkerstickers reload}; package-private for tests (MockBukkit doesn't run Paper's command API). */
+    void reload(CommandSender sender) {
         List<String> warnings = settings.reload();
         displays.refreshAllLater();
         sender.sendMessage(warnings.isEmpty()
