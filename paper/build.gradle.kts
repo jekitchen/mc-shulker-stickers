@@ -111,6 +111,11 @@ tasks.register<RunServer>("runClaims") {
     jvmArgs("-Dshulkerstickers.selftest.claims=GriefPrevention,WorldGuard")
 }
 
+// `-Pserverport=N`: listen on another port, so two servers can run side by side.
+providers.gradleProperty("serverport").orNull?.let { port ->
+    tasks.withType<RunServer>().configureEach { args("--port", port) }
+}
+
 // `-Pselftest`: accept the EULA, run the spike self-test, then shut the server down.
 if (providers.gradleProperty("selftest").isPresent) {
     tasks.withType<RunServer>().configureEach {

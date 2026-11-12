@@ -121,14 +121,19 @@ final class SelfTest {
         Bukkit.getRegionScheduler().runDelayed(plugin, origin, t1 -> {
             AtomicBoolean pulsed = new AtomicBoolean(false);
             BoxRecolorer.recolor(box, BoxColor.RED);
-            watchObserver(origin, observerBlock, pulsed, 6, () -> {
+            // An observer fires 2 ticks after the change and stays on for 2; watch well past that.
+            watchObserver(origin, observerBlock, pulsed, 10, () -> {
                 check("AC-16 recolor does not pulse an observer", !pulsed.get());
                 AtomicBoolean controlPulsed = new AtomicBoolean(false);
+                String before = observerBlock.getBlockData().getAsString() + " above " + box.getType();
                 Directional data = (Directional) Material.BLUE_SHULKER_BOX.createBlockData();
                 data.setFacing(BlockFace.EAST);
                 box.setBlockData(data, true);
-                watchObserver(origin, observerBlock, controlPulsed, 6, () -> {
-                    check("AC-16 control: a physics block change does pulse the observer", controlPulsed.get());
+                watchObserver(origin, observerBlock, controlPulsed, 20, () -> {
+                    check("AC-16 control: a physics block change does pulse the observer"
+                            + (controlPulsed.get() ? "" : " (before: " + before + "; after: "
+                                    + observerBlock.getBlockData().getAsString() + " above " + box.getType() + ")"),
+                            controlPulsed.get());
                     dropTests(origin);
                 });
             });

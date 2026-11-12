@@ -6,8 +6,9 @@
 #   scripts/selftest.sh runCanvas      # Canvas
 #   scripts/selftest.sh runClaims      # Paper with WorldEdit, WorldGuard and GriefPrevention
 #
-# Extra arguments go to Gradle (for example -Pnodatapack). SELFTEST_TIMEOUT sets the limit in
-# seconds (default 900). The server log is kept in build/selftest/<task>.log.
+# Extra arguments go to Gradle (for example -Pnodatapack, or -Pserverport=25575 to run next to
+# another server). SELFTEST_TIMEOUT sets the limit in seconds (default 900). The server log is
+# kept in build/selftest/<task>.log.
 set -uo pipefail
 
 task="${1:?usage: scripts/selftest.sh <runServer|runFolia|runCanvas|runClaims> [gradle args]}"
