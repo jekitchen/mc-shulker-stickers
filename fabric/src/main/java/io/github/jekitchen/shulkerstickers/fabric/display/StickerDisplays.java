@@ -190,34 +190,45 @@ public final class StickerDisplays {
      */
     public static void updateOpenBoxes(ServerLevel level) {
         drawPending(level);
-        Map<BlockPos, Lid> lids = LIDS.get(level);
-        if (lids != null && !lids.isEmpty()) {
-            for (Map.Entry<BlockPos, Lid> entry : lids.entrySet()) {
-                if (loadedBox(level, entry.getKey()) instanceof ShulkerBoxBlockEntity box) {
-                    float progress = box.getProgress(1.0f);
-                    if (progress != entry.getValue().shown) {
-                        entry.getValue().moveTo(progress, true);
-                    }
-                }
-            }
+        boolean hideWhileOpen = Settings.config().hideWhileOpen();
+        if (!hideWhileOpen && !HIDDEN.getOrDefault(level, Set.of()).isEmpty()) {
+            new ArrayList<>(HIDDEN.get(level)).forEach(pos -> refresh(level, pos));
         }
-        if (!Settings.config().hideWhileOpen()) {
-            if (!HIDDEN.getOrDefault(level, Set.of()).isEmpty()) {
-                new ArrayList<>(HIDDEN.get(level)).forEach(pos -> refresh(level, pos));
-            }
-            return;
-        }
+        // One pass, one lookup per drawn box: lid-face displays follow the lid, side ones of an
+        // open box are hidden (collected first, since hiding changes the map being walked).
         Map<BlockPos, ElementHolder> holders = HOLDERS.get(level);
+        Map<BlockPos, Lid> lids = LIDS.getOrDefault(level, Map.of());
+        List<BlockPos> toHide = null;
         if (holders != null && !holders.isEmpty()) {
-            for (BlockPos pos : new ArrayList<>(holders.keySet())) {
-                if (lids != null && lids.containsKey(pos)) {
-                    continue; // moves with the lid instead
+            for (BlockPos pos : holders.keySet()) {
+                Lid lid = lids.get(pos);
+                if (lid == null && !hideWhileOpen) {
+                    continue;
                 }
-                if (loadedBox(level, pos) instanceof ShulkerBoxBlockEntity box && isOpen(box)) {
-                    remove(level, pos);
-                    HIDDEN.computeIfAbsent(level, l -> new HashSet<>()).add(pos);
+                if (!(loadedBox(level, pos) instanceof ShulkerBoxBlockEntity box)) {
+                    continue;
+                }
+                if (lid != null) {
+                    float progress = box.getProgress(1.0f);
+                    if (progress != lid.shown) {
+                        lid.moveTo(progress, true);
+                    }
+                } else if (isOpen(box)) {
+                    if (toHide == null) {
+                        toHide = new ArrayList<>();
+                    }
+                    toHide.add(pos);
                 }
             }
+        }
+        if (toHide != null) {
+            for (BlockPos pos : toHide) {
+                remove(level, pos);
+                HIDDEN.computeIfAbsent(level, l -> new HashSet<>()).add(pos);
+            }
+        }
+        if (!hideWhileOpen) {
+            return;
         }
         Set<BlockPos> hidden = HIDDEN.get(level);
         if (hidden != null && !hidden.isEmpty()) {
