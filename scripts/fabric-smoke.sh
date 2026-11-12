@@ -37,7 +37,8 @@ fetch() { # url file
 
 echo "Building the Fabric jar"
 "$root/gradlew" -p "$root" :fabric:assemble --console=plain -q || fail "build failed"
-jar="$(ls "$root"/fabric/build/libs/shulker-stickers-fabric-*.jar | grep -v -- '-sources\.jar$' | head -n 1)"
+# The newest jar: older versions may still sit in build/libs on a dev machine.
+jar="$(ls -t "$root"/fabric/build/libs/shulker-stickers-fabric-*.jar | grep -v -- '-sources\.jar$' | head -n 1)"
 [ -n "$jar" ] || fail "no Fabric jar in fabric/build/libs"
 
 fetch "https://meta.fabricmc.net/v2/versions/loader/$mc/$loader/$installer/server/jar" "$cache/fabric-server-$mc-$loader.jar"

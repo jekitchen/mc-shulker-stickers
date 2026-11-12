@@ -6,7 +6,8 @@ plugins {
 
 allprojects {
     group = property("maven_group") as String
-    version = property("mod_version") as String
+    // For example 0.1.0-alpha.1+26.3: SemVer build metadata names the Minecraft version.
+    version = "${property("mod_version")}+${property("minecraft_version")}"
 }
 
 subprojects {

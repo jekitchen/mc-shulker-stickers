@@ -111,7 +111,16 @@ To try it on a local test server:
 | `./gradlew :paper:runCanvas` | Canvas |
 | `./gradlew :paper:runClaims` | Paper with WorldEdit, WorldGuard and GriefPrevention |
 
-Add `-Pselftest` to any Paper task to run the built-in real-server checks and stop.
+Add `-Pselftest` to any Paper task to run the built-in real-server checks and stop, and `-Pserverport=N` to use another port.
+
+Two scripts run the real-server checks the way CI does, and fail if anything fails:
+
+| Script | What it checks |
+|---|---|
+| `scripts/selftest.sh runServer` (or `runFolia`, `runCanvas`, `runClaims`) | The Paper plugin's built-in checks on that server |
+| `scripts/fabric-smoke.sh` | The Fabric release jar on a real dedicated server with only Fabric API installed |
+
+Releases are described in [`docs/release/README.md`](docs/release/README.md), and changes in [`CHANGELOG.md`](CHANGELOG.md).
 
 The code lives in three modules: `core` holds every platform-independent rule (data format, editor, config, translations), and `fabric` and `paper` adapt it to each server.
 
@@ -119,4 +128,4 @@ The code lives in three modules: `core` holds every platform-independent rule (d
 
 MIT, see [`LICENSE`](LICENSE).
 
-The Fabric build bundles [Polymer](https://github.com/Patbox/polymer) (LGPL-3.0), unmodified; its source is available at that link.
+The Fabric build bundles [Polymer](https://github.com/Patbox/polymer) (LGPL-3.0), unmodified; its source is available at that link. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md); the license texts are in `licenses/` and inside the Fabric jar.
