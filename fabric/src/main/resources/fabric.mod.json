@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "shulker_stickers",
+  "version": "${version}",
+  "name": "Shulker Stickers",
+  "description": "Recolor, label and rename placed shulker boxes. Server-side; works with vanilla clients.",
+  "authors": ["jekitchen"],
+  "contact": {
+    "sources": "https://github.com/jekitchen/mc-shulker-stickers",
+    "issues": "https://github.com/jekitchen/mc-shulker-stickers/issues"
+  },
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["io.github.jekitchen.shulkerstickers.fabric.ShulkerStickersFabric"]
+  },
+  "mixins": ["shulker_stickers.mixins.json"],
+  "depends": {
+    "fabricloader": ">=${fabric_loader_version}",
+    "minecraft": ">=${minecraft_version}",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

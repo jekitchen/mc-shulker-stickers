@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "shulker_stickers_test",
+  "version": "0.0.0",
+  "name": "Shulker Stickers GameTests",
+  "environment": "*",
+  "entrypoints": {
+    "fabric-gametest": [
+      "io.github.jekitchen.shulkerstickers.fabric.test.StickerDataGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.RecolorGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.EditorMenuGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.IconGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.EditRulesGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.DisplayGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.SessionGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.ReviewFixGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.ParityGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.ReopenLockGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.IntegrationGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.MigrationGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.PerfGameTests"
+    ]
+  },
+  "depends": {
+    "shulker_stickers": "*",
+    "fabric-gametest-api-v1": "*"
+  }
+}

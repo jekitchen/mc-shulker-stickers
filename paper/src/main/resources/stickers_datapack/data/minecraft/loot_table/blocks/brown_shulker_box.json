@@ -1,0 +1,40 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "modifier": [
+            {
+              "type": "minecraft:copy_components",
+              "include": [
+                "minecraft:custom_name",
+                "minecraft:container",
+                "minecraft:lock",
+                "minecraft:container_loot"
+              ],
+              "source": "block_entity"
+            },
+            {
+              "type": "minecraft:copy_custom_data",
+              "source": "block_entity",
+              "ops": [
+                { "source": "PublicBukkitValues.\"shulker_stickers:v\"", "target": "PublicBukkitValues.\"shulker_stickers:v\"", "op": "replace" },
+                { "source": "PublicBukkitValues.\"shulker_stickers:icon_id\"", "target": "PublicBukkitValues.\"shulker_stickers:icon_id\"", "op": "replace" },
+                { "source": "PublicBukkitValues.\"shulker_stickers:icon_visual\"", "target": "PublicBukkitValues.\"shulker_stickers:icon_visual\"", "op": "replace" },
+                { "source": "PublicBukkitValues.\"shulker_stickers:anchor\"", "target": "PublicBukkitValues.\"shulker_stickers:anchor\"", "op": "replace" },
+                { "source": "PublicBukkitValues.\"shulker_stickers:rot\"", "target": "PublicBukkitValues.\"shulker_stickers:rot\"", "op": "replace" },
+                { "source": "PublicBukkitValues.\"shulker_stickers:face\"", "target": "PublicBukkitValues.\"shulker_stickers:face\"", "op": "replace" },
+                { "source": "PublicBukkitValues.\"shulker_stickers:name_hidden\"", "target": "PublicBukkitValues.\"shulker_stickers:name_hidden\"", "op": "replace" }
+              ]
+            }
+          ],
+          "name": "minecraft:brown_shulker_box"
+        }
+      ],
+      "rolls": 1
+    }
+  ],
+  "random_sequence": "minecraft:blocks/brown_shulker_box"
+}

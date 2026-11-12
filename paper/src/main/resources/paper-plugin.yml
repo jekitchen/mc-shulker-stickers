@@ -1,0 +1,32 @@
+name: ShulkerStickers
+version: '${version}'
+main: io.github.jekitchen.shulkerstickers.paper.ShulkerStickersPaper
+bootstrapper: io.github.jekitchen.shulkerstickers.paper.ShulkerStickersBootstrap
+api-version: '26.3'
+folia-supported: true
+dependencies:
+  server:
+    # Claim plugins we ask directly when they're installed (owner decision 3).
+    GriefPrevention: { load: BEFORE, required: false, join-classpath: true }
+    WorldGuard: { load: BEFORE, required: false, join-classpath: true }
+    Lands: { load: BEFORE, required: false, join-classpath: true }
+    Towny: { load: BEFORE, required: false, join-classpath: true }
+description: Recolor, label and rename placed shulker boxes. Works with vanilla clients.
+authors: [jekitchen]
+website: https://github.com/jekitchen/mc-shulker-stickers
+permissions:
+  shulker_stickers.color:
+    description: Recolor shulker boxes in the Sticker editor
+    default: true
+  shulker_stickers.icon:
+    description: Put icons on shulker boxes
+    default: true
+  shulker_stickers.name:
+    description: Rename shulker boxes in the Sticker editor
+    default: true
+  shulker_stickers.name.display:
+    description: Names you set are shown on boxes
+    default: true
+  shulker_stickers.admin:
+    description: Inspect, clear and reload (/shulkerstickers inspect|clear|reload)
+    default: op
