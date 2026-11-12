@@ -55,6 +55,7 @@ feed() {
     echo "execute positioned 0 -60 0 run function shulker_stickers_showcase:build"
     sleep 2
     echo "data get block 0 -58 3 components"
+    echo "data get block 0 -58 3 CustomName"
     echo "data get block 0 -58 6 components"
     echo "data get block 0 -58 9 components"
     echo "data get block 0 -58 12 lock"
@@ -91,7 +92,12 @@ expect_answer() { # position message text...
     done
     echo "PASS $msg"; checks=$((checks + 1))
 }
-expect_answer "0, -58, 3" "row 1: a lid icon and a name" '"minecraft:custom_name": "Up"' '"shulker_stickers:icon_id": "minecraft:diamond"' '"shulker_stickers:anchor": "lid"'
+expect_answer "0, -58, 3" "row 1: a lid icon" '"shulker_stickers:icon_id": "minecraft:diamond"' '"shulker_stickers:anchor": "lid"'
+# Commands that place a box read its name from CustomName, not from components (a name there is
+# stored but never becomes the box's name).
+line="$(grep -m1 '0, -58, 3 has the following block data: "Up"' "$log")"
+[ -n "$line" ] || fail "row 1: the box is named Up (no CustomName answer)"
+echo "PASS row 1: the box is named Up"; checks=$((checks + 1))
 expect_answer "0, -58, 6" "row 2: a side icon" '"shulker_stickers:anchor": "side"' '"shulker_stickers:face": "north"'
 expect_answer "0, -58, 9" "row 3: a dyed icon" 'icon_visual' 'dyed_color'
 expect_answer "0, -58, 12" "row 4: the box is locked with a stick" 'minecraft:stick'
