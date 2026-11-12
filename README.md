@@ -24,6 +24,13 @@ Minecraft **26.3** or newer, Java 25.
 
 Sticker data uses the same format on every platform, so stickered items keep their stickers when moved between Fabric and Paper servers.
 
+### Moving a world between platforms
+
+Placed boxes keep their stickers when a whole world moves from Fabric to Paper or back: each build picks up the other's data the first time it loads the box.
+
+- **Fabric → Paper:** copy the world folder over. On first start Paper reorganizes the folder (it warns and waits 30 seconds); that's normal.
+- **Paper → Fabric:** after copying, also copy `world/dimensions/minecraft/overworld/data/minecraft/world_gen_settings.dat` to `world/data/minecraft/world_gen_settings.dat`. Paper moves that file when it reorganizes a world, and Fabric (like vanilla) won't start without it. This is a Paper and vanilla difference, not specific to Shulker Stickers.
+
 ## Using it
 
 1. Hold the item you want as an icon in your **off-hand**, and keep your main hand empty.
@@ -119,6 +126,7 @@ Two scripts run the real-server checks the way CI does, and fail if anything fai
 |---|---|
 | `scripts/selftest.sh runServer` (or `runFolia`, `runCanvas`, `runClaims`) | The Paper plugin's built-in checks on that server |
 | `scripts/paper-uninstall.sh` | The self-test, then the same world on Paper without the plugin (AC-6) |
+| `scripts/world-move.sh` | A world moved from a real Fabric server to Paper and back; the stickers follow (AC-13) |
 | `scripts/fabric-smoke.sh` | The Fabric release jar on a real dedicated server with only Fabric API installed: a restart with a saved decorated box, uninstall (AC-6), and next to Ultimate Shulker Trims |
 
 Releases are described in [`docs/release/README.md`](docs/release/README.md), and changes in [`CHANGELOG.md`](CHANGELOG.md).

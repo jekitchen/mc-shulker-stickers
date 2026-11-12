@@ -121,6 +121,17 @@ tasks.register<RunServer>("runWithoutPlugin") {
     jvmArgs("-Dcom.mojang.eula.agree=true")
 }
 
+// Paper with this plugin in its own folder, for a world copied in from Fabric and back
+// (AC-13, scripts/world-move.sh).
+tasks.register<RunServer>("runWorldMove") {
+    group = "run paper"
+    description = "Runs Paper with this plugin on build/world-move/paper (a world moved from Fabric)."
+    minecraftVersion(project.property("minecraft_version") as String)
+    pluginJars(tasks.jar.flatMap { it.archiveFile })
+    runDirectory = rootProject.layout.buildDirectory.dir("world-move/paper")
+    jvmArgs("-Dcom.mojang.eula.agree=true")
+}
+
 // `-Pserverport=N`: listen on another port, so two servers can run side by side.
 providers.gradleProperty("serverport").orNull?.let { port ->
     tasks.withType<RunServer>().configureEach { args("--port", port) }

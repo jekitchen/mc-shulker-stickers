@@ -21,7 +21,9 @@ public final class ShulkerStickersPaper extends JavaPlugin {
         pm.registerEvents(new GestureListener(editor), this);
         pm.registerEvents(editor, this);
         pm.registerEvents(new StickerTransferListener(this, displays), this);
-        pm.registerEvents(new DisplayListener(this, settings, displays), this);
+        DisplayListener displayListener = new DisplayListener(this, settings, displays);
+        pm.registerEvents(displayListener, this);
+        displayListener.processLoadedChunks();
         pm.registerEvents(new HelpListener(settings), this);
         LootTableGuard lootGuard = new LootTableGuard(this);
         pm.registerEvents(lootGuard, this);

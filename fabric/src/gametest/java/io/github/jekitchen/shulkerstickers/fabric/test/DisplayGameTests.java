@@ -59,11 +59,11 @@ public class DisplayGameTests {
         StickerDisplays.remove(level, box.getBlockPos());
         StickerDisplays.drawLater(level, box);
         helper.assertFalse(StickerDisplays.isShown(level, box.getBlockPos()), "not drawn yet");
-        helper.runAfterDelay(1, () -> {
+        // Drawn at the end of a level tick; where that falls relative to this test's ticks varies.
+        helper.succeedWhen(() -> {
             List<VirtualElement> elements = elements(helper, BOX);
             helper.assertValueEqual(count(elements, ItemDisplayElement.class), 1L, "icons");
             helper.assertValueEqual(count(elements, TextDisplayElement.class), 1L, "names");
-            helper.succeed();
         });
     }
 
@@ -79,7 +79,8 @@ public class DisplayGameTests {
         StickerDisplays.remove(level, box.getBlockPos());
         helper.setBlock(BOX, Blocks.AIR);
         StickerDisplays.drawLater(level, box);
-        helper.runAfterDelay(1, () -> {
+        // Several ticks, so the end-of-tick pass has certainly run.
+        helper.runAfterDelay(5, () -> {
             helper.assertFalse(StickerDisplays.isShown(level, box.getBlockPos()), "nothing drawn for a broken box");
             helper.succeed();
         });
@@ -106,11 +107,9 @@ public class DisplayGameTests {
         }
         helper.assertTrue(level.getBlockEntity(to) instanceof ShulkerBoxBlockEntity copy
                 && StickerData.read(copy).equals(Optional.of(TestBoxes.STICKER)), "the copy keeps the sticker");
-        helper.runAfterDelay(1, () -> {
-            List<VirtualElement> elements = elements(helper, BOX.east(2));
-            helper.assertValueEqual(count(elements, ItemDisplayElement.class), 1L, "icons on the copy");
-            helper.succeed();
-        });
+        // Drawn at the end of a level tick; where that falls relative to this test's ticks varies.
+        helper.succeedWhen(() -> helper.assertValueEqual(
+                count(elements(helper, BOX.east(2)), ItemDisplayElement.class), 1L, "icons on the copy"));
     }
 
     @GameTest

@@ -51,6 +51,9 @@ jobs:
       - name: Smoke test the Fabric jar
         run: scripts/fabric-smoke.sh
 
+      - name: Move a world between Fabric and Paper
+        run: scripts/world-move.sh
+
       - name: Self-test on Paper (with the uninstall check), Folia and Canvas
         run: |
           scripts/paper-uninstall.sh

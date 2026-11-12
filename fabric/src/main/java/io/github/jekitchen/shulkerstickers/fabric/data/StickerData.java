@@ -149,13 +149,29 @@ public final class StickerData {
                 tag.put(StickerFormat.BUKKIT_VALUES, bukkit);
             }
         });
-        blockEntity.setComponents(DataComponentMap.builder()
-                .addAll(blockEntity.components())
-                .set(DataComponents.CUSTOM_DATA, updated.isEmpty() ? null : updated)
-                .build());
+        writing = true;
+        try {
+            blockEntity.setComponents(DataComponentMap.builder()
+                    .addAll(blockEntity.components())
+                    .set(DataComponents.CUSTOM_DATA, updated.isEmpty() ? null : updated)
+                    .build());
+        } finally {
+            writing = false;
+        }
         if (markChanged) {
             blockEntity.setChanged();
         }
+    }
+
+    /** True while this class writes a box's components; set and read on the server thread only. */
+    private static boolean writing;
+
+    /**
+     * Whether a component change comes from our own write. Our callers redraw the box themselves;
+     * other changes (for example {@code /clone}) get a redraw from {@code BlockEntityLoadMixin}.
+     */
+    public static boolean isOwnWrite() {
+        return writing;
     }
 
     private static CompoundTag bukkitValues(@Nullable CustomData data) {

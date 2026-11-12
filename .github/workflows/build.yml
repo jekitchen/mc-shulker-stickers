@@ -71,6 +71,32 @@ jobs:
           path: build/fabric-smoke/server.log
           if-no-files-found: ignore
 
+  # A world moved from a real Fabric server to Paper and back (AC-13).
+  world-move:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Move a world between Fabric and Paper
+        run: scripts/world-move.sh
+
+      - name: Upload server logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-move-logs
+          path: build/world-move/*.log
+          if-no-files-found: ignore
+
   # The Paper plugin's built-in checks on real servers (Paper, Folia, Canvas, and Paper with
   # real WorldGuard and GriefPrevention). Each server starts, runs the checks and stops.
   selftest:
