@@ -10,7 +10,7 @@ First alpha, for Minecraft 26.3. Server-side: players need no mod.
 - **Icons and names on boxes:** the icon shows on the lid or the side you clicked, the name under it. Players see names within 10 blocks by default (`name.view_range`).
 - **Stickers stay with the box:** breaking, pistons, explosions and dispensers keep them, and so does moving a box between Fabric and Paper servers, or moving a whole world from one to the other.
 - **Protection:** locked boxes need the key in either hand. Spawn protection is respected. Claims are checked on Fabric through Common Protection API, and on Paper with GriefPrevention, WorldGuard, Lands and Towny. Other Paper claim plugins can be covered with `protection.simulate_place_event`, which is off by default.
-- **Config, permissions and commands:** `/shulkerstickers help | toggle | inspect | clear | reload`, LuckPerms-compatible permission nodes, optional XP or item costs, and a word filter for names.
+- **Config, permissions and commands:** `/shulkerstickers help | toggle | inspect | clear | reload`, LuckPerms-compatible permission nodes, optional XP or item costs, and a word filter for names. On Paper, `reload` also draws boxes made by `/setblock`, `/clone`, structures or WorldEdit (Fabric draws them right away).
 - **Uninstall-safe:** remove the mod or plugin and boxes keep their contents and color; icon and name displays aren't saved, so nothing is left behind.
 
 Known limitations:
