@@ -91,3 +91,10 @@ Re-measured 11 Nov 2026 with the same wall ("after" window, 200 ticks). `-Pnearb
 ## Displays appear up to a second late
 
 Proximity is checked once a second per chunk, so a player flying in fast (elytra, riptide) can see boxes without icons for up to a second before they appear. Checking more often costs more; once a second is the 0.1 trade-off.
+
+## Re-check after the 12 Nov changes
+
+Re-measured 12 Nov 2026 after the display fixes (chunk-edge displays, lost-display check, the Fabric non-loading lookup), on the same machine:
+
+- **Fabric:** the per-tick hook for 1,000 boxes averages 0.039 ms (p99 0.080 ms), the same as before.
+- **Paper, player near all 1,000 boxes:** the plugin's proximity checks take 0.039 ms/tick and the mean tick is 1.12 ms, the same as before (0.041 ms and 1.135 ms). A first version of the lost-display check cost 0.065 ms/tick; it now only looks at displays standing in a neighbouring chunk.

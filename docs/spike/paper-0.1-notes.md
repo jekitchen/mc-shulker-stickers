@@ -162,7 +162,7 @@ Fixes for the Paper code review. New tests are in `SaveSafetyTest` (16 tests); t
 
 **Pushed back**
 - **"Keep the editor open when apply fails."** Apply-time failures are exactly PRD §9's cases (box broken, moved, changed or locked), and §9 says the editor closes. Pre-apply refusals (cost, blocked word, blocked icon) already keep it open.
-- **"Send a comparator update after recolor."** The Paper API has no analog-output-only update, and a neighbor update would fire observers (AC-16). A comparator's output depends only on the contents, which a recolor doesn't change, so the signal stays correct.
+- **"Send a comparator update after recolor."** Not needed: the self-test shows the recolor already refreshes comparators. A comparator placed without reading the box (signal 0) reads it right after a recolor, so writing the block entity back sends the comparator-only update, and observers still don't fire (AC-16). A comparator's output depends only on the contents, which a recolor doesn't change, so the signal stays correct; the self-test checks it doesn't flicker either.
 
 ## Parity review fixes (Paper now matches Fabric)
 
@@ -205,3 +205,15 @@ Test counts after these fixes: 84 unit tests (MockBukkit and pure). The self-tes
 - **Displays:** a per-chunk index next to the tracked boxes, so each chunk's once-a-second check looks only at its own boxes. A check that finds its chunk unloaded forgets everything in it, and a late refresh for an unloaded chunk forgets the box instead of tracking it (or loading the chunk).
 
 Tests: 98 unit tests (14 new in `RegressionFixesTest`, using item costs as well as XP). Self-test 23/23 on Paper 248, Folia 6 and Canvas 1010.
+
+## Test gaps closed (release prep)
+
+New self-test checks, on Paper, Folia and Canvas:
+- **AC-2:** two boxes, one full of 27 different stacks over a hopper that empties into a chest, and one under a hopper that feeds it, are recolored on every tick for 100 ticks. The item totals are checked every tick and at the end: nothing duplicated or lost, nothing dropped, and the hoppers really moved items (13 transfers each).
+- **AC-16 comparator:** a comparator reading a box gives the right signal before and after a recolor, with no flicker.
+- **§6.2:** a box pushed by a piston and one blown up by `World#createExplosion` each drop an item with the sticker (skipped in `runClaims`, where GriefPrevention blocks unclaimed piston movement and surface explosions by default). A stickered box item keeps its sticker when a hopper moves it into a chest and when a dropper drops it. A box placed by a dispenser gets its icon display.
+- **§6.2 `/clone` and structures:** a copy made with the structure API (all servers) or `/clone` (Paper only; Folia and Canvas refuse a console command from a region thread with "Dispatching command async") keeps its sticker and name, and the chunk-load pass draws its displays. A copy in a chunk that is already loaded shows its displays after the next chunk load, as §6.2 says.
+
+New MockBukkit tests in `StagingTest`: Cancel and disconnecting without Save leave the box unchanged and charge nothing (AC-11); "Use off-hand item" and Save leave the off-hand stack unchanged (AC-3).
+
+Tests: 110 unit tests (MockBukkit and pure). Self-test: Paper 43/43, Folia 41/41, Canvas 41/41 (no `/clone` there), `runClaims` 43/43.

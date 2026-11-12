@@ -154,7 +154,7 @@ final class EditorService implements Listener {
         BoxColor color = BoxColor.fromItemId(block.getType().getKey().toString()).orElse(BoxColor.UNDYED);
         Optional<Sticker> sticker = StickerStore.read(box.getPersistentDataContainer());
         Optional<String> name = Optional.ofNullable(box.customName())
-                .map(c -> PlainTextComponentSerializer.plainText().serialize(c));
+                .map(SafeNames::plain);
         BoxState original = new BoxState(color, sticker.flatMap(Sticker::iconId),
                 sticker.flatMap(Sticker::iconVisual), name);
         Session session = new Session(player.getUniqueId(), key, clickedFace, new EditorSession(original));
@@ -397,7 +397,8 @@ final class EditorService implements Listener {
         event.getView().setRepairCost(0);
     }
 
-    private void finishRename(Player player, String text) {
+    /** What the rename screen's result slot does; package-private for tests (MockBukkit has no anvil menu). */
+    void finishRename(Player player, String text) {
         Session session = sessions.get(player.getUniqueId());
         if (session == null) {
             return;
@@ -511,8 +512,16 @@ final class EditorService implements Listener {
     }
 
     private void end(Session session) {
+        // Always: our paper must never reach the player when the rename screen goes away, also
+        // when a new editor replaces this one (opened on another box from the rename screen).
+        clearRenameView(session);
         sessions.remove(session.player, session);
-        locks.remove(session.box, session.player);
+        // The same player may already have a newer session on this box (reopened during a Save):
+        // that one holds the lock now.
+        Session current = sessions.get(session.player);
+        if (current == null || !current.box.equals(session.box)) {
+            locks.remove(session.box, session.player);
+        }
         // The reach watcher stops itself on its next run once the session is gone.
     }
 
@@ -536,8 +545,8 @@ final class EditorService implements Listener {
     private static void cancelQuietly(ScheduledTask task) {
         try {
             task.cancel();
-        } catch (UnsupportedOperationException e) {
-            // MockBukkit doesn't implement cancel; real servers do.
+        } catch (RuntimeException e) {
+            // MockBukkit doesn't implement cancel (its exception isn't an UnsupportedOperationException); real servers do.
         }
     }
 
@@ -895,6 +904,28 @@ final class EditorService implements Listener {
 
     int openSessions() {
         return sessions.size();
+    }
+
+    /**
+     * Self-test hook (no players on that server): an edit session on {@code block} held by
+     * {@code holder}, who isn't online, so the box-removal listeners can be checked with real
+     * pistons. Returns the flag a Save would read; {@link #endSelfTestEdit} releases it.
+     */
+    AtomicBoolean startSelfTestEdit(UUID holder, Block block) {
+        BlockKey key = BlockKey.of(block);
+        BoxColor color = BoxColor.fromItemId(block.getType().getKey().toString()).orElse(BoxColor.UNDYED);
+        Session session = new Session(holder, key, BlockFace.UP,
+                new EditorSession(new BoxState(color, Optional.empty(), Optional.empty(), Optional.empty())));
+        locks.put(key, holder);
+        sessions.put(holder, session);
+        return session.boxGone;
+    }
+
+    void endSelfTestEdit(UUID holder) {
+        Session session = sessions.get(holder);
+        if (session != null) {
+            end(session);
+        }
     }
 
     Optional<UUID> editorOf(Block block) {

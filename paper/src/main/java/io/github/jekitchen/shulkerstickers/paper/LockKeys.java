@@ -23,6 +23,12 @@ final class LockKeys {
 
     private record Bridge(Method getBlockEntity, Method asNmsCopy, Class<?> nmsItemStack) {}
 
+    /**
+     * Test hook: MockBukkit has no server lock check, so unit tests supply one. Always null on a
+     * real server, where the self-test checks the server's own lock check.
+     */
+    static volatile java.util.function.BiPredicate<BlockState, ItemStack> testLockCheck;
+
     private LockKeys() {}
 
     /** True if the box isn't locked, or the player holds its key in either hand. */
@@ -37,6 +43,10 @@ final class LockKeys {
     static boolean unlocksWith(BlockState state, ItemStack item, Logger logger) {
         if (item == null || item.isEmpty()) {
             return false;
+        }
+        var testCheck = testLockCheck;
+        if (testCheck != null) {
+            return testCheck.test(state, item);
         }
         try {
             Bridge b = bridge();

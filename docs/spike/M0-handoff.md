@@ -2,7 +2,7 @@
 
 **Result:** go on all three platforms. Fabric, Paper and Canvas (and Folia) run the same features from one shared `core`, and every automated check passes. All eleven owner decisions on the v0.4 proposals are built (see below). What's left needs a real game client.
 
-Branch: `spike/m0` (not pushed). Worktree: `.claude/worktrees/m0-spike`.
+Merged to `main` as PR #2 on 12 Nov 2026. **For the current 0.1 status, see [`docs/release/0.1-status.md`](../release/0.1-status.md)**: the test counts and coverage below are from 11 Nov and have since grown. The client checks at the end of this page are still the manual list for 0.1.
 
 ## Where things stand
 
@@ -11,7 +11,7 @@ Branch: `spike/m0` (not pushed). Worktree: `.claude/worktrees/m0-spike`.
 | Automated tests | 87 GameTests (incl. Fabric Permissions API and Common Protection API run in tests) | 107 unit tests (MockBukkit) + real-server self-test: 28 checks on Paper 249, Folia 6 and Canvas 1010; 30 on Paper with real WorldGuard and GriefPrevention |
 | Shared `core` | 101 unit tests | (same) |
 | Editor, recolor, icon, rename, Save/Cancel | Done | Done |
-| Data survives break / pistons / explosions / dispensers | Done | Done (built-in datapack) |
+| Data survives break / pistons / explosions / dispensers | Done (pistons and explosions tested since 12 Nov) | Done (built-in datapack; pistons and explosions tested since 12 Nov) |
 | Config, translations, permissions, costs, locking, hide-while-open, first-run tip, commands | Done | Done |
 | Items move between Fabric and Paper | Identical bytes (checked by a parity review) | (same) |
 | AC-8 (1,000 boxes < 0.5 ms/tick) | 0.04 ms | Under budget with no player near; ~0.7 ms with a player in view of all 1,000 at the old name range. Accepted for 0.1 with the name range now 10 (owner decision 6) |
@@ -40,6 +40,15 @@ All eleven v0.4 proposals are decided (`docs/PRD.md` §12) and built:
 
 Start a server with `./gradlew :fabric:runServer`, `:paper:runServer` or `:paper:runCanvas` and join with an unmodded 26.3 client. Hold cobblestone in the off-hand.
 
+**Shortcut: the showcase.** Copy `showcase/shulker_stickers_showcase` into the server's `world/datapacks/` folder (`fabric/run/world/datapacks` or `paper/run/world/datapacks`) and run `/reload`. Then stand on open, flat ground as an operator and run `/function shulker_stickers_showcase:build`. On Paper, also run `/shulkerstickers reload` so the plugin draws boxes made by commands. It builds four rows of decorated boxes south of you:
+
+| Row | Contents | Checks |
+|---|---|---|
+| 1 | Every facing, with the icon on the lid | 4, 7 |
+| 2 | Side faces, and the lid icon turned four ways | 4 |
+| 3 | Icon looks: dyed armor, glint, a head, a banner; a name-only box, a long name, a hidden name | 5, 6 |
+| 4 | A box locked with a stick (the key is in the chest next to it), and a plain box to decorate | 1–3, 10 |
+
 1. **Gesture:** sneak + right-click a placed box with an empty main hand opens "Edit: …". With a block in the off-hand, no block is placed and no ghost block shows.
 2. **Menu safety:** try shift-click, number keys, F, double-click, drag, Q and clicking outside the window. Nothing leaves the editor and no ghost items appear.
 3. **Rename screen:** type a name and click the result slot at 0 XP. It must work at repair cost 0, the paper must never reach the inventory, and Esc must return to a working editor.
@@ -51,8 +60,10 @@ Start a server with `./gradlew :fabric:runServer`, `:paper:runServer` or `:paper
 9. **Optional Fabric integrations with real mods:** LuckPerms and a Common Protection API claim mod (e.g. Flan). Both APIs are exercised in GameTests with fake providers, but not yet with the real mods.
 10. **Lock key:** lock a box with `/data merge block <pos> {lock:{items:"minecraft:stick"}}` (or a named key). With the key in the off-hand and an empty main hand, the editor opens on both builds; without it, "locked". The icon picker then offers only the key.
 11. **Claims on Paper** (`:paper:runClaims`): in a GriefPrevention claim, a container-trusted player is refused and a build-trusted player can edit. Same for a WorldGuard region with and without build. With `/ignoreclaims` or region bypass, editing works.
-12. **World move:** decorate boxes on Fabric, copy the world folder into a Paper server, and check they still show their stickers; then the other way round. Also edit a box on Paper, move the world to Fabric, and check it shows the Paper edit.
+12. **World move:** decorate boxes on Fabric, copy the world folder into a Paper server, and check they still show their stickers; then the other way round. Also edit a box on Paper, move the world to Fabric, and check it shows the Paper edit. (Since 12 Nov, `scripts/world-move.sh` checks the data side of this automatically; what's left is seeing the icons. Paper → Fabric needs the extra file copy described in the README.)
 13. **Shared look:** compare the editor and a decorated box side by side on Fabric and Paper; tune `DisplayLayout` and `EditorLook` in `core` if needed.
+14. **Restart (both, 12 Nov fixes):** decorate a few boxes near spawn, restart the server, and check it starts and the icons and names show again. Also walk far away and back so their chunks unload and reload. Before the fixes, Fabric froze at "Preparing spawn area", and Paper didn't draw boxes in chunks that were loaded before the plugin (spawn chunks).
+15. **Chunk edge (Paper, 12 Nov change):** put a box in the last block column of a chunk (F3 shows chunk borders) with its icon on the face toward the next chunk. The icon shows in front of the face, at the same brightness as a box in the middle of a chunk.
 
 ## Files
 

@@ -225,6 +225,13 @@ class SaveSafetyTest {
         assertEquals(5, player.getLevel());
         assertFalse(editorOpen(player));
         assertTrue(editor.editorOf(box).isEmpty());
+        // The player is told why (PRD §9): the last action-bar message is the "box gone" one.
+        net.kyori.adventure.text.Component last = null;
+        for (var c = player.nextActionBar(); c != null; c = player.nextActionBar()) {
+            last = c;
+        }
+        assertEquals(Texts.plain(player, io.github.jekitchen.shulkerstickers.core.text.TextKeys.SAVE_BOX_GONE),
+                last == null ? null : net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(last));
     }
 
     @Test

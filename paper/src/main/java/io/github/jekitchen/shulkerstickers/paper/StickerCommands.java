@@ -32,10 +32,18 @@ final class StickerCommands {
     private final Settings settings;
     private final DisplayManager displays;
 
+    /** Runs the chunk-load pass on every loaded chunk (draws boxes made by commands or WorldEdit). */
+    private final Runnable rescanLoadedChunks;
+
     StickerCommands(Plugin plugin, Settings settings, DisplayManager displays) {
+        this(plugin, settings, displays, () -> {});
+    }
+
+    StickerCommands(Plugin plugin, Settings settings, DisplayManager displays, Runnable rescanLoadedChunks) {
         this.plugin = plugin;
         this.settings = settings;
         this.displays = displays;
+        this.rescanLoadedChunks = rescanLoadedChunks;
     }
 
     LiteralCommandNode<CommandSourceStack> build() {
@@ -78,9 +86,13 @@ final class StickerCommands {
         player.sendMessage(Texts.text(player, NamedTextColor.GRAY, off ? TextKeys.TOGGLE_OFF : TextKeys.TOGGLE_ON));
     }
 
-    private void reload(CommandSender sender) {
+    /** {@code /shulkerstickers reload}; package-private for tests (MockBukkit doesn't run Paper's command API). */
+    void reload(CommandSender sender) {
         List<String> warnings = settings.reload();
         displays.refreshAllLater();
+        // Nothing tells the plugin about boxes made by /setblock, /clone, structures or WorldEdit in
+        // a loaded chunk; a reload finds and draws them (otherwise they're drawn at the next chunk load).
+        rescanLoadedChunks.run();
         sender.sendMessage(warnings.isEmpty()
                 ? Texts.text(sender, NamedTextColor.GREEN, TextKeys.RELOAD_DONE)
                 : Texts.text(sender, NamedTextColor.YELLOW, TextKeys.RELOAD_WARNINGS, warnings.size()));
@@ -107,7 +119,7 @@ final class StickerCommands {
             var pdc = box.getPersistentDataContainer();
             Map<String, Object> raw = StickerStore.raw(pdc);
             java.util.Optional<String> name = java.util.Optional.ofNullable(box.customName())
-                    .map(n -> net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(n));
+                    .map(SafeNames::plain);
             String where = block.getX() + " " + block.getY() + " " + block.getZ();
             var lines = InspectReport.lines(where, raw, name, StickerStore.isNameHidden(pdc));
             player.getScheduler().run(plugin, t -> {

@@ -47,6 +47,102 @@ public class DisplayGameTests {
         return elements.stream().filter(type::isInstance).count();
     }
 
+    /**
+     * A box that loads with its chunk is drawn at the end of the tick, not during the load (asking
+     * for a chunk that is still loading hung the server; scripts/fabric-smoke.sh restarts a real
+     * server to check that). Here: a deferred box is drawn by the next level tick.
+     */
+    @GameTest
+    public void boxDeferredWhileItsChunkLoadsIsDrawnNextTick(GameTestHelper helper) {
+        ShulkerBoxBlockEntity box = TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
+        ServerLevel level = helper.getLevel();
+        StickerDisplays.remove(level, box.getBlockPos());
+        StickerDisplays.drawLater(level, box);
+        helper.assertFalse(StickerDisplays.isShown(level, box.getBlockPos()), "not drawn yet");
+        // Drawn at the end of a level tick; where that falls relative to this test's ticks varies.
+        helper.succeedWhen(() -> {
+            List<VirtualElement> elements = elements(helper, BOX);
+            helper.assertValueEqual(count(elements, ItemDisplayElement.class), 1L, "icons");
+            helper.assertValueEqual(count(elements, TextDisplayElement.class), 1L, "names");
+        });
+    }
+
+    /**
+     * A deferred box that is gone by its turn is never drawn. It is queued after it was broken,
+     * so the unload cleanup can't take it off the queue first: the end-of-tick pass itself must
+     * skip it.
+     */
+    @GameTest
+    public void deferredBoxBrokenBeforeItsTurnIsNotDrawn(GameTestHelper helper) {
+        ShulkerBoxBlockEntity box = TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
+        ServerLevel level = helper.getLevel();
+        StickerDisplays.remove(level, box.getBlockPos());
+        helper.setBlock(BOX, Blocks.AIR);
+        StickerDisplays.drawLater(level, box);
+        // Several ticks, so the end-of-tick pass has certainly run.
+        helper.runAfterDelay(5, () -> {
+            helper.assertFalse(StickerDisplays.isShown(level, box.getBlockPos()), "nothing drawn for a broken box");
+            helper.succeed();
+        });
+    }
+
+    /**
+     * PRD §6.2 "/clone, structure blocks, WorldEdit": a copy keeps its sticker and is drawn right
+     * away. (Copies create the box first and load its data after, so the load event alone would
+     * see an empty box.)
+     */
+    @GameTest
+    public void clonedBoxKeepsItsStickerAndIsDrawn(GameTestHelper helper) {
+        TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
+        ServerLevel level = helper.getLevel();
+        BlockPos from = helper.absolutePos(BOX);
+        BlockPos to = helper.absolutePos(BOX.east(2));
+        String command = "clone %d %d %d %d %d %d %d %d %d".formatted(
+                from.getX(), from.getY(), from.getZ(), from.getX(), from.getY(), from.getZ(), to.getX(), to.getY(), to.getZ());
+        try {
+            level.getServer().getCommands().getDispatcher().execute(command,
+                    level.getServer().createCommandSourceStack().withLevel(level).withSuppressedOutput());
+        } catch (com.mojang.brigadier.exceptions.CommandSyntaxException e) {
+            throw new IllegalStateException(e);
+        }
+        helper.assertTrue(level.getBlockEntity(to) instanceof ShulkerBoxBlockEntity copy
+                && StickerData.read(copy).equals(Optional.of(TestBoxes.STICKER)), "the copy keeps the sticker");
+        // Drawn at the end of a level tick; where that falls relative to this test's ticks varies.
+        helper.succeedWhen(() -> helper.assertValueEqual(
+                count(elements(helper, BOX.east(2)), ItemDisplayElement.class), 1L, "icons on the copy"));
+    }
+
+    /**
+     * Security: a crafted name nesting translations (9 levels, each fallback repeating its argument
+     * ten times) would expand to 10^9 characters through Component#getString and hang the server
+     * whenever the box is drawn. Drawing it must be quick and the label short.
+     */
+    @GameTest
+    public void aNameBombIsDrawnQuicklyAndShort(GameTestHelper helper) {
+        ShulkerBoxBlockEntity box = TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
+        Component bomb = Component.literal("x");
+        for (int level = 0; level < 9; level++) {
+            bomb = Component.translatableWithFallback("nope." + level, "%1$s%1$s%1$s%1$s%1$s%1$s%1$s%1$s%1$s%1$s", bomb);
+        }
+        // The bomb is real: three levels already expand to a thousand characters the vanilla way.
+        Component small = Component.literal("x");
+        for (int level = 0; level < 3; level++) {
+            small = Component.translatableWithFallback("nope." + level, "%1$s%1$s%1$s%1$s%1$s%1$s%1$s%1$s%1$s%1$s", small);
+        }
+        helper.assertValueEqual(small.getString().length(), 1000, "vanilla expansion of three levels");
+
+        box.setComponents(net.minecraft.core.component.DataComponentMap.builder().addAll(box.components())
+                .set(net.minecraft.core.component.DataComponents.CUSTOM_NAME, bomb).build());
+        long start = System.nanoTime();
+        StickerDisplays.refresh(helper.getLevel(), helper.absolutePos(BOX));
+        long millis = (System.nanoTime() - start) / 1_000_000;
+        helper.assertTrue(millis < 500, "drawn in " + millis + " ms");
+        TextDisplayElement label = (TextDisplayElement) elements(helper, BOX).stream()
+                .filter(TextDisplayElement.class::isInstance).findFirst().orElseThrow();
+        helper.assertTrue(label.getText().getString().length() <= 64, "label kept short: " + label.getText().getString().length());
+        helper.succeed();
+    }
+
     @GameTest
     public void iconAndNameAreDrawn(GameTestHelper helper) {
         TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);

@@ -27,6 +27,7 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.BlockPos;
 import io.github.jekitchen.shulkerstickers.core.display.DisplayLayout;
 import net.minecraft.core.Direction;
+import net.minecraft.core.SectionPos;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
@@ -36,9 +37,11 @@ import net.minecraft.world.item.ItemDisplayContext;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.ShulkerBoxBlock;
 import net.minecraft.world.level.block.entity.ShulkerBoxBlockEntity;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Draws icons and names on placed boxes with Polymer virtual entities: packets only, nothing is
@@ -56,6 +59,12 @@ public final class StickerDisplays {
     private static final Map<ServerLevel, Set<BlockPos>> HIDDEN = new WeakHashMap<>();
     /** Every loaded shulker box, drawn or not, so a reload can redraw all of them. */
     private static final Map<ServerLevel, Set<ShulkerBoxBlockEntity>> LOADED = new WeakHashMap<>();
+    /**
+     * Boxes to draw at the end of the tick because their chunk was still loading. A box loaded
+     * from disk fires its load event while its chunk is being finished; asking the level for that
+     * chunk then would wait for itself forever and hang the server thread.
+     */
+    private static final Map<ServerLevel, Set<ShulkerBoxBlockEntity>> PENDING = new WeakHashMap<>();
 
     private StickerDisplays() {
     }
@@ -70,6 +79,10 @@ public final class StickerDisplays {
         ServerBlockEntityEvents.BLOCK_ENTITY_UNLOAD.register((blockEntity, level) -> {
             if (blockEntity instanceof ShulkerBoxBlockEntity box) {
                 LOADED.getOrDefault(level, Set.of()).remove(box);
+                Set<ShulkerBoxBlockEntity> pending = PENDING.get(level);
+                if (pending != null) {
+                    pending.remove(box);
+                }
                 remove(level, blockEntity.getBlockPos());
                 HIDDEN.getOrDefault(level, new HashSet<>()).remove(blockEntity.getBlockPos());
             }
@@ -78,7 +91,7 @@ public final class StickerDisplays {
     }
 
     public static void refresh(ServerLevel level, BlockPos pos) {
-        if (level.getBlockEntity(pos) instanceof ShulkerBoxBlockEntity box) {
+        if (loadedBox(level, pos) instanceof ShulkerBoxBlockEntity box) {
             show(level, box);
         } else {
             remove(level, pos);
@@ -128,8 +141,9 @@ public final class StickerDisplays {
         return box.getAnimationStatus() != ShulkerBoxBlockEntity.AnimationStatus.CLOSED;
     }
 
-    /** Per-tick hook: hides displays of open boxes and shows them again on close. Public for the perf test. */
+    /** Per-tick hook: draws boxes whose chunk has finished loading, hides displays of open boxes and shows them again on close. Public for the perf test. */
     public static void updateOpenBoxes(ServerLevel level) {
+        drawPending(level);
         if (!Settings.config().hideWhileOpen()) {
             if (!HIDDEN.getOrDefault(level, Set.of()).isEmpty()) {
                 new ArrayList<>(HIDDEN.get(level)).forEach(pos -> refresh(level, pos));
@@ -139,7 +153,7 @@ public final class StickerDisplays {
         Map<BlockPos, ElementHolder> holders = HOLDERS.get(level);
         if (holders != null && !holders.isEmpty()) {
             for (BlockPos pos : new ArrayList<>(holders.keySet())) {
-                if (level.getBlockEntity(pos) instanceof ShulkerBoxBlockEntity box && isOpen(box)) {
+                if (loadedBox(level, pos) instanceof ShulkerBoxBlockEntity box && isOpen(box)) {
                     remove(level, pos);
                     HIDDEN.computeIfAbsent(level, l -> new HashSet<>()).add(pos);
                 }
@@ -148,7 +162,7 @@ public final class StickerDisplays {
         Set<BlockPos> hidden = HIDDEN.get(level);
         if (hidden != null && !hidden.isEmpty()) {
             for (BlockPos pos : new ArrayList<>(hidden)) {
-                if (!(level.getBlockEntity(pos) instanceof ShulkerBoxBlockEntity box)) {
+                if (!(loadedBox(level, pos) instanceof ShulkerBoxBlockEntity box)) {
                     hidden.remove(pos);
                 } else if (!isOpen(box)) {
                     hidden.remove(pos);
@@ -158,9 +172,59 @@ public final class StickerDisplays {
         }
     }
 
+    /** Draws {@code box} at the end of the tick, once its chunk is fully loaded. Public for tests. */
+    public static void drawLater(ServerLevel level, ShulkerBoxBlockEntity box) {
+        PENDING.computeIfAbsent(level, l -> Collections.newSetFromMap(new WeakHashMap<>())).add(box);
+    }
+
+    /** Draws the boxes whose chunk was still loading when they loaded; ones still not ready wait another tick. */
+    private static void drawPending(ServerLevel level) {
+        Set<ShulkerBoxBlockEntity> pending = PENDING.get(level);
+        if (pending == null || pending.isEmpty()) {
+            return;
+        }
+        List<ShulkerBoxBlockEntity> due = List.copyOf(pending);
+        pending.clear();
+        for (ShulkerBoxBlockEntity box : due) {
+            LevelChunk chunk = loadedChunk(level, box.getBlockPos());
+            if (box.isRemoved()) {
+                continue;
+            }
+            if (chunk == null) {
+                pending.add(box);
+            } else if (chunk.getBlockEntity(box.getBlockPos()) == box) {
+                show(level, box);
+            }
+        }
+    }
+
+    /**
+     * The block entity at {@code pos} if its chunk is fully loaded. Unlike
+     * {@code Level#getBlockEntity}, this never loads the chunk or adds a ticket to it: on the
+     * server thread that call goes through {@code getChunk(..., true)}, which adds a one-tick
+     * ticket on a cache miss. (In a test the chunk still unloaded, but there is no reason for a
+     * per-tick pass over drawn boxes to touch chunk tickets at all.)
+     */
+    private static net.minecraft.world.level.block.entity.@Nullable BlockEntity loadedBox(ServerLevel level, BlockPos pos) {
+        LevelChunk chunk = loadedChunk(level, pos);
+        return chunk == null ? null : chunk.getBlockEntity(pos);
+    }
+
+    /** The chunk at {@code pos} if it is fully loaded; never loads it or waits for it. */
+    private static @Nullable LevelChunk loadedChunk(ServerLevel level, BlockPos pos) {
+        return level.getChunkSource().getChunkNow(SectionPos.blockToSectionCoord(pos.getX()),
+                SectionPos.blockToSectionCoord(pos.getZ()));
+    }
+
     private static void show(ServerLevel level, ShulkerBoxBlockEntity box) {
         BlockPos pos = box.getBlockPos().immutable();
         remove(level, pos);
+        LevelChunk chunk = loadedChunk(level, pos);
+        if (chunk == null) {
+            // The box's chunk is still loading (we're inside its load): draw it at the end of the tick.
+            drawLater(level, box);
+            return;
+        }
         StickerConfig config = Settings.config();
         if (config.hideWhileOpen() && isOpen(box)) {
             HIDDEN.computeIfAbsent(level, l -> new HashSet<>()).add(pos);
@@ -169,7 +233,7 @@ public final class StickerDisplays {
         HIDDEN.getOrDefault(level, new HashSet<>()).remove(pos);
 
         Optional<Sticker> sticker = StickerData.read(box);
-        Optional<String> name = Optional.ofNullable(box.getCustomName()).map(Component::getString)
+        Optional<String> name = Optional.ofNullable(box.getCustomName()).map(io.github.jekitchen.shulkerstickers.fabric.SafeNames::plain)
                 .filter(n -> config.nameDisplayEnabled() && !StickerData.isNameHidden(box));
         Optional<ItemStack> icon = iconToDraw(sticker, config, level.registryAccess());
         if (icon.isEmpty() && name.isEmpty()) {
@@ -213,7 +277,7 @@ public final class StickerDisplays {
         // The display sits just outside the face (for light) but belongs to the box's own chunk,
         // so a box on a chunk edge never loads or depends on the neighbouring chunk.
         Vec3 at = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(DisplayLayout.FACE_OFFSET));
-        new ChunkAttachment(holder, level.getChunkAt(pos), at, false);
+        new ChunkAttachment(holder, chunk, at, false);
         HOLDERS.computeIfAbsent(level, l -> new HashMap<>()).put(pos, holder);
     }
 

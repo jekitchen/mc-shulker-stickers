@@ -83,7 +83,7 @@ public final class StickerCommands {
     public static List<Component> inspectLines(CommandSourceStack source, ShulkerBoxBlockEntity box) {
         Map<String, Object> raw = StickerData.rawValues(box);
         BlockPos pos = box.getBlockPos();
-        Optional<String> name = Optional.ofNullable(box.getCustomName()).map(Component::getString);
+        Optional<String> name = Optional.ofNullable(box.getCustomName()).map(io.github.jekitchen.shulkerstickers.fabric.SafeNames::plain);
         java.util.ArrayList<Component> lines = new java.util.ArrayList<>();
         for (InspectReport.Line line : InspectReport.lines(pos.getX() + " " + pos.getY() + " " + pos.getZ(),
                 raw, name, StickerData.isNameHidden(box))) {

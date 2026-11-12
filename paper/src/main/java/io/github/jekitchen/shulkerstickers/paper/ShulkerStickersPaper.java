@@ -21,18 +21,20 @@ public final class ShulkerStickersPaper extends JavaPlugin {
         pm.registerEvents(new GestureListener(editor), this);
         pm.registerEvents(editor, this);
         pm.registerEvents(new StickerTransferListener(this, displays), this);
-        pm.registerEvents(new DisplayListener(this, settings, displays), this);
+        DisplayListener displayListener = new DisplayListener(this, settings, displays);
+        pm.registerEvents(displayListener, this);
+        displayListener.processLoadedChunks();
         pm.registerEvents(new HelpListener(settings), this);
         LootTableGuard lootGuard = new LootTableGuard(this);
         pm.registerEvents(lootGuard, this);
         lootGuard.checkWorldDatapacks();
 
-        StickerCommands commands = new StickerCommands(this, settings, displays);
+        StickerCommands commands = new StickerCommands(this, settings, displays, displayListener::processLoadedChunks);
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event ->
                 event.registrar().register(commands.build(), "Shulker Stickers commands", List.of()));
 
         if (Boolean.getBoolean("shulkerstickers.selftest")) {
-            new SelfTest(this, settings, displays).schedule();
+            new SelfTest(this, settings, displays, editor).schedule();
         } else if (Boolean.getBoolean("shulkerstickers.perftest")) {
             new PerfTest(this, displays).schedule();
         }

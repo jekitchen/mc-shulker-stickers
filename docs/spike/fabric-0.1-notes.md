@@ -101,7 +101,7 @@ All of the spike's list (`docs/spike/m0-fabric.md`) still applies. New items:
 - Only English text.
 - Editors that are open keep the config they started with until reopened.
 - The hide-while-open pass visits every drawn box each tick. It's cheap per box, but it should be measured for AC-8 (1,000 boxes).
-- Not tested with an automated test: the Esc "Changes discarded" message, the disconnect lock release, `inspect` output, and `reload`'s redraw.
+- Not tested with an automated test: the Esc "Changes discarded" message and `inspect` output. (The disconnect lock release and `reload`'s redraw are now covered by `ReviewFixGameTests`, and AC-7 and AC-11 by `ReloadGameTests` and `StagingGameTests`.)
 - Lid animation (v0.2) isn't started.
 
 ## Code-review fixes (11 Nov 2026)

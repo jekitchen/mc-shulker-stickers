@@ -83,15 +83,20 @@ class EditorFlowTest {
         assertTrue(editorOpen(player));
     }
 
-    @Test
-    void anItemInTheMainHandIsNeverIntercepted() {
+    /** AC-9: the same items as Fabric's MainHandGestureGameTests. */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = Material.class, names = {
+            "STONE", "SHULKER_BOX", "WATER_BUCKET", "BUCKET", "BREAD", "IRON_PICKAXE", "IRON_AXE"})
+    void anItemInTheMainHandIsNeverIntercepted(Material item) {
         player.setSneaking(true);
-        player.getInventory().setItemInMainHand(new ItemStack(Material.STONE));
+        player.getInventory().setItemInMainHand(new ItemStack(item));
 
         PlayerInteractEvent event = interact(player, EquipmentSlot.HAND);
 
-        assertTrue(event.useInteractedBlock() != Event.Result.DENY);
+        assertTrue(event.useInteractedBlock() != Event.Result.DENY, "block use left to vanilla");
+        assertTrue(event.useItemInHand() != Event.Result.DENY, "item use left to vanilla");
         assertFalse(editorOpen(player));
+        assertEquals(item, player.getInventory().getItemInMainHand().getType());
     }
 
     @Test

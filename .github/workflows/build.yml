@@ -44,3 +44,107 @@ jobs:
           path: |
             **/build/reports/tests/
             **/build/test-results/
+
+  # The Fabric release jar on a real dedicated server with only Fabric API installed.
+  fabric-smoke:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      # The Fabric server launcher and Fabric API jars the scripts download (keyed by the versions).
+      - uses: actions/cache@v6
+        with:
+          path: build/fabric-smoke/cache
+          key: fabric-server-${{ hashFiles('gradle.properties') }}
+
+      - name: Smoke test the Fabric jar
+        run: scripts/fabric-smoke.sh
+
+      - name: Showcase datapack loads and builds
+        run: scripts/showcase-check.sh
+
+      - name: Upload server log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fabric-smoke-log
+          path: build/fabric-smoke/server.log
+          if-no-files-found: ignore
+
+  # A world moved from a real Fabric server to Paper and back (AC-13).
+  world-move:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      # The Fabric server launcher and Fabric API jars the scripts download (keyed by the versions).
+      - uses: actions/cache@v6
+        with:
+          path: build/fabric-smoke/cache
+          key: fabric-server-${{ hashFiles('gradle.properties') }}
+
+      - name: Move a world between Fabric and Paper
+        run: scripts/world-move.sh
+
+      - name: Upload server logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: world-move-logs
+          path: build/world-move/*.log
+          if-no-files-found: ignore
+
+  # The Paper plugin's built-in checks on real servers (Paper, Folia, Canvas, and Paper with
+  # real WorldGuard and GriefPrevention). Each server starts, runs the checks and stops.
+  selftest:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        task: [runServer, runFolia, runCanvas, runClaims]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      # On Paper this also restarts the self-test's world without the plugin (AC-6).
+      - name: Self-test on ${{ matrix.task }}
+        run: |
+          if [ "${{ matrix.task }}" = runServer ]; then
+            scripts/paper-uninstall.sh
+          else
+            scripts/selftest.sh ${{ matrix.task }}
+          fi
+
+      - name: Upload server log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: selftest-${{ matrix.task }}
+          path: build/selftest/
+          if-no-files-found: ignore

@@ -149,13 +149,36 @@ public final class StickerData {
                 tag.put(StickerFormat.BUKKIT_VALUES, bukkit);
             }
         });
-        blockEntity.setComponents(DataComponentMap.builder()
+        asOwnWrite(() -> blockEntity.setComponents(DataComponentMap.builder()
                 .addAll(blockEntity.components())
                 .set(DataComponents.CUSTOM_DATA, updated.isEmpty() ? null : updated)
-                .build());
+                .build()));
         if (markChanged) {
             blockEntity.setChanged();
         }
+    }
+
+    /** True on a thread while it runs one of our own writes. Per thread: worldgen threads load boxes too. */
+    private static final ThreadLocal<Boolean> WRITING = ThreadLocal.withInitial(() -> false);
+
+    /** Runs {@code write} as our own write (see {@link #isOwnWrite}); nesting is fine. */
+    public static void asOwnWrite(Runnable write) {
+        boolean outer = WRITING.get();
+        WRITING.set(true);
+        try {
+            write.run();
+        } finally {
+            WRITING.set(outer);
+        }
+    }
+
+    /**
+     * Whether a box's data is being changed by our own code. Our callers redraw the box
+     * themselves; other changes (for example {@code /clone}) get a redraw from
+     * {@code BlockEntityLoadMixin}.
+     */
+    public static boolean isOwnWrite() {
+        return WRITING.get();
     }
 
     private static CompoundTag bukkitValues(@Nullable CustomData data) {

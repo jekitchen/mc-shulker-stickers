@@ -111,6 +111,32 @@ tasks.register<RunServer>("runClaims") {
     jvmArgs("-Dshulkerstickers.selftest.claims=GriefPrevention,WorldGuard")
 }
 
+// Paper on the same world as runServer, without this plugin: the uninstall check (AC-6,
+// scripts/paper-uninstall.sh).
+tasks.register<RunServer>("runWithoutPlugin") {
+    group = "run paper"
+    description = "Runs runServer's world on Paper with this plugin removed."
+    minecraftVersion(project.property("minecraft_version") as String)
+    runDirectory = layout.projectDirectory.dir("run")
+    jvmArgs("-Dcom.mojang.eula.agree=true")
+}
+
+// Paper with this plugin in its own folder, for a world copied in from Fabric and back
+// (AC-13, scripts/world-move.sh).
+tasks.register<RunServer>("runWorldMove") {
+    group = "run paper"
+    description = "Runs Paper with this plugin on build/world-move/paper (a world moved from Fabric)."
+    minecraftVersion(project.property("minecraft_version") as String)
+    pluginJars(tasks.jar.flatMap { it.archiveFile })
+    runDirectory = rootProject.layout.buildDirectory.dir("world-move/paper")
+    jvmArgs("-Dcom.mojang.eula.agree=true")
+}
+
+// `-Pserverport=N`: listen on another port, so two servers can run side by side.
+providers.gradleProperty("serverport").orNull?.let { port ->
+    tasks.withType<RunServer>().configureEach { args("--port", port) }
+}
+
 // `-Pselftest`: accept the EULA, run the spike self-test, then shut the server down.
 if (providers.gradleProperty("selftest").isPresent) {
     tasks.withType<RunServer>().configureEach {

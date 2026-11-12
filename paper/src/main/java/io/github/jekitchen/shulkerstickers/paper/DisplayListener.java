@@ -58,7 +58,33 @@ final class DisplayListener implements Listener {
 
     @EventHandler
     void onChunkLoad(ChunkLoadEvent event) {
-        var chunk = event.getChunk();
+        processLater(event.getChunk());
+    }
+
+    /**
+     * Chunks already loaded when the plugin is enabled (spawn and force-loaded chunks load before
+     * plugins do, and stay loaded) never send a load event, so they get the same pass now.
+     */
+    void processLoadedChunks() {
+        for (org.bukkit.World world : plugin.getServer().getWorlds()) {
+            org.bukkit.Chunk[] loaded;
+            try {
+                loaded = world.getLoadedChunks();
+            } catch (RuntimeException e) {
+                // Paper, Folia and Canvas 26.3 allow this from the enable thread; a fork that
+                // doesn't must not stop the plugin from enabling.
+                plugin.getLogger().warning("Can't list the loaded chunks of " + world.getName()
+                        + " (" + e.getMessage() + "); boxes in them are drawn when their chunks next load");
+                continue;
+            }
+            for (org.bukkit.Chunk chunk : loaded) {
+                processLater(chunk);
+            }
+        }
+    }
+
+    /** On the chunk's region thread: moves Fabric-saved stickers into persistent data, then draws every box. */
+    private void processLater(org.bukkit.Chunk chunk) {
         plugin.getServer().getRegionScheduler().execute(plugin, chunk.getWorld(), chunk.getX(), chunk.getZ(), () -> {
             if (!chunk.isLoaded()) {
                 return;

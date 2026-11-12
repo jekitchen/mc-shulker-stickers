@@ -18,9 +18,17 @@
       "io.github.jekitchen.shulkerstickers.fabric.test.ReopenLockGameTests",
       "io.github.jekitchen.shulkerstickers.fabric.test.IntegrationGameTests",
       "io.github.jekitchen.shulkerstickers.fabric.test.MigrationGameTests",
-      "io.github.jekitchen.shulkerstickers.fabric.test.PerfGameTests"
+      "io.github.jekitchen.shulkerstickers.fabric.test.PerfGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.HopperRecolorGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.PersistenceGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.MainHandGestureGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.StagingGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.ReloadGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.SpawnProtectionGameTests",
+      "io.github.jekitchen.shulkerstickers.fabric.test.EdgeCaseGameTests"
     ]
   },
+  "mixins": ["shulker_stickers_test.mixins.json"],
   "depends": {
     "shulker_stickers": "*",
     "fabric-gametest-api-v1": "*"

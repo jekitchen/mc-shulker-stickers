@@ -1,4 +1,4 @@
-# Shulker Stickers
+# <img src="docs/images/icon-512.png" alt="" width="48"> Shulker Stickers
 
 Organize your shulker boxes at a glance. Sneak and right-click a placed shulker box with an empty hand to open the **Sticker editor**, where you can:
 
@@ -20,9 +20,16 @@ Everything runs on the server. Players need **no client mod** to see icons and n
 | Paper and its forks | `shulker-stickers-paper` plugin | Nothing else |
 | Folia / Canvas | the same Paper plugin | Nothing else |
 
-Minecraft **26.3** or newer, Java 25.
+Minecraft **26.3.x**, Java 25. The Fabric mod refuses to load on 26.4 or later: the Polymer it bundles is built for 26.3 only.
 
 Sticker data uses the same format on every platform, so stickered items keep their stickers when moved between Fabric and Paper servers.
+
+### Moving a world between platforms
+
+Placed boxes keep their stickers when a whole world moves from Fabric to Paper or back: each build picks up the other's data the first time it loads the box.
+
+- **Fabric → Paper:** copy the world folder over. On first start Paper reorganizes the folder (it warns and waits 30 seconds); that's normal.
+- **Paper → Fabric:** after copying, also copy `world/dimensions/minecraft/overworld/data/minecraft/world_gen_settings.dat` to `world/data/minecraft/world_gen_settings.dat`. Paper moves that file when it reorganizes a world, and Fabric (like vanilla) won't start without it. This is a Paper and vanilla difference, not specific to Shulker Stickers.
 
 ## Using it
 
@@ -111,7 +118,19 @@ To try it on a local test server:
 | `./gradlew :paper:runCanvas` | Canvas |
 | `./gradlew :paper:runClaims` | Paper with WorldEdit, WorldGuard and GriefPrevention |
 
-Add `-Pselftest` to any Paper task to run the built-in real-server checks and stop.
+Add `-Pselftest` to any Paper task to run the built-in real-server checks and stop, and `-Pserverport=N` to use another port.
+
+Two scripts run the real-server checks the way CI does, and fail if anything fails:
+
+| Script | What it checks |
+|---|---|
+| `scripts/selftest.sh runServer` (or `runFolia`, `runCanvas`, `runClaims`) | The Paper plugin's built-in checks on that server |
+| `scripts/paper-uninstall.sh` | The self-test, then the same world on Paper without the plugin (AC-6) |
+| `scripts/world-move.sh` | A world moved from a real Fabric server to Paper and back; the stickers follow (AC-13) |
+| `scripts/showcase-check.sh` | The showcase datapack (`showcase/`, which builds decorated boxes for checking things in game) loads and builds on a real Fabric server |
+| `scripts/fabric-smoke.sh` | The Fabric release jar on a real dedicated server with only Fabric API installed: a restart with a saved decorated box, uninstall (AC-6), and next to Ultimate Shulker Trims |
+
+Releases are described in [`docs/release/README.md`](docs/release/README.md), and changes in [`CHANGELOG.md`](CHANGELOG.md).
 
 The code lives in three modules: `core` holds every platform-independent rule (data format, editor, config, translations), and `fabric` and `paper` adapt it to each server.
 
@@ -119,4 +138,4 @@ The code lives in three modules: `core` holds every platform-independent rule (d
 
 MIT, see [`LICENSE`](LICENSE).
 
-The Fabric build bundles [Polymer](https://github.com/Patbox/polymer) (LGPL-3.0), unmodified; its source is available at that link.
+The Fabric build bundles [Polymer](https://github.com/Patbox/polymer) (LGPL-3.0), unmodified; its source is available at that link. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md); the license texts are in `licenses/` and inside the Fabric jar.

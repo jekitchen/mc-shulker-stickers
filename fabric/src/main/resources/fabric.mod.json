@@ -10,6 +10,7 @@
     "issues": "https://github.com/jekitchen/mc-shulker-stickers/issues"
   },
   "license": "MIT",
+  "icon": "assets/shulker_stickers/icon.png",
   "environment": "*",
   "entrypoints": {
     "main": ["io.github.jekitchen.shulkerstickers.fabric.ShulkerStickersFabric"]
@@ -17,7 +18,7 @@
   "mixins": ["shulker_stickers.mixins.json"],
   "depends": {
     "fabricloader": ">=${fabric_loader_version}",
-    "minecraft": ">=${minecraft_version}",
+    "minecraft": "~${minecraft_version}",
     "java": ">=25",
     "fabric-api": "*"
   }

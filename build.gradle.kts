@@ -6,7 +6,8 @@ plugins {
 
 allprojects {
     group = property("maven_group") as String
-    version = property("mod_version") as String
+    // For example 0.1.0-alpha.1+26.3: SemVer build metadata names the Minecraft version.
+    version = "${property("mod_version")}+${property("minecraft_version")}"
 }
 
 subprojects {
@@ -28,5 +29,14 @@ subprojects {
 
     tasks.withType<Test>().configureEach {
         useJUnitPlatform()
+    }
+
+    // Every jar we ship carries our license and the third-party notices.
+    tasks.named<Jar>("jar") {
+        from(rootProject.file("LICENSE")) {
+            into("META-INF")
+            rename { "LICENSE_shulker_stickers.txt" }
+        }
+        from(rootProject.file("THIRD_PARTY_NOTICES.md")) { into("META-INF") }
     }
 }

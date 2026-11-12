@@ -42,7 +42,16 @@ public final class Icons {
      */
     public static Optional<String> visualOf(ItemStack stack, HolderLookup.Provider registries) {
         RegistryOps<JsonElement> ops = registries.createSerializationContext(JsonOps.INSTANCE);
-        JsonElement encoded = DataComponentPatch.CODEC.encodeStart(ops, stack.getComponentsPatch())
+        // Only the visual components are encoded: the held item can be anything (a box full of
+        // books), and encoding all of it on every click would be costly.
+        DataComponentPatch.Builder visual = DataComponentPatch.builder();
+        for (net.minecraft.core.component.TypedDataComponent<?> component : stack.getComponentsPatch().split().added()) {
+            Identifier type = BuiltInRegistries.DATA_COMPONENT_TYPE.getKey(component.type());
+            if (type != null && IconRules.isVisualComponent(type.toString())) {
+                visual.set(component);
+            }
+        }
+        JsonElement encoded = DataComponentPatch.CODEC.encodeStart(ops, visual.build())
                 .result().orElse(new JsonObject());
         JsonObject components = encoded.isJsonObject() ? encoded.getAsJsonObject() : new JsonObject();
         return IconVisuals.canonicalize(components, stack.isEnchanted());
@@ -94,6 +103,17 @@ public final class Icons {
                 return Optional.empty();
             }
         }
-        return isBlocked(stack, config) ? Optional.empty() : Optional.of(stack);
+        if (isBlocked(stack, config)) {
+            return Optional.empty();
+        }
+        // An item_model can make an allowed item look like a blocked one: check the item it names too.
+        Identifier model = stack.get(net.minecraft.core.component.DataComponents.ITEM_MODEL);
+        if (model != null) {
+            Optional<Item> looksLike = BuiltInRegistries.ITEM.getOptional(model);
+            if (looksLike.isPresent() && isBlocked(new ItemStack(looksLike.get()), config)) {
+                return Optional.empty();
+            }
+        }
+        return Optional.of(stack);
     }
 }
