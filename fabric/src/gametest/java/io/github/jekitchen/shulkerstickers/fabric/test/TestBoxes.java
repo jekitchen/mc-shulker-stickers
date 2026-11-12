@@ -60,6 +60,20 @@ final class TestBoxes {
         return box;
     }
 
+    /**
+     * A box item carrying the test sticker, contents and name, made the way a broken box's drop is
+     * (our keys copied from a block entity), without touching the world.
+     */
+    static ItemStack stickeredItem(BoxColor color) {
+        ShulkerBoxBlockEntity scratch = new ShulkerBoxBlockEntity(BlockPos.ZERO, Boxes.block(color).defaultBlockState());
+        StickerData.write(scratch, java.util.Optional.of(STICKER));
+        ItemStack stack = new ItemStack(Boxes.block(color));
+        stack.set(DataComponents.CONTAINER, ItemContainerContents.fromItems(contents()));
+        stack.set(DataComponents.CUSTOM_NAME, NAME);
+        StickerData.copyToItem(scratch, stack);
+        return stack;
+    }
+
     /** Places an empty, unlocked, unnamed box with no sticker. */
     static ShulkerBoxBlockEntity placePlain(GameTestHelper helper, BlockPos rel, BoxColor color, Direction facing) {
         helper.setBlock(rel, Boxes.block(color).defaultBlockState().setValue(ShulkerBoxBlock.FACING, facing));
