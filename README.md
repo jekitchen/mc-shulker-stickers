@@ -109,6 +109,9 @@ To try it on a local test server:
 | `./gradlew :paper:runServer` | Paper |
 | `./gradlew :paper:runFolia` | Folia |
 | `./gradlew :paper:runCanvas` | Canvas |
+| `./gradlew :paper:runClaims` | Paper with WorldEdit, WorldGuard and GriefPrevention |
+
+Add `-Pselftest` to any Paper task to run the built-in real-server checks and stop.
 
 The code lives in three modules: `core` holds every platform-independent rule (data format, editor, config, translations), and `fabric` and `paper` adapt it to each server.
 
