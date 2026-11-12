@@ -110,6 +110,28 @@ final class WorldMigration {
         }
     }
 
+    /** Self-test only: stores {@code values} in the box's custom_data the way Fabric does. */
+    static void putFabricStyle(Block block, Map<String, Object> values) throws ReflectiveOperationException {
+        Bridge b = bridge();
+        Class<?> compound = Class.forName("net.minecraft.nbt.CompoundTag");
+        Object bukkit = compound.getConstructor().newInstance();
+        for (var e : values.entrySet()) {
+            String full = StickerFormat.fullKey(e.getKey());
+            if (e.getValue() instanceof Integer i) {
+                compound.getMethod("putInt", String.class, int.class).invoke(bukkit, full, i);
+            } else {
+                compound.getMethod("putString", String.class, String.class).invoke(bukkit, full, e.getValue().toString());
+            }
+        }
+        Object tag = compound.getConstructor().newInstance();
+        b.put().invoke(tag, StickerFormat.BUKKIT_VALUES, bukkit);
+        Object blockEntity = b.getBlockEntity().invoke(block.getState(false));
+        Object builder = b.builder().invoke(null);
+        b.addAll().invoke(builder, b.components().invoke(blockEntity));
+        b.set().invoke(builder, b.customDataType(), b.customDataOf().invoke(null, tag));
+        b.setComponents().invoke(blockEntity, b.build().invoke(builder));
+    }
+
     private static void write(PersistentDataContainer pdc, Map<String, Object> ours) {
         ours.forEach((key, value) -> {
             NamespacedKey namespaced = PaperKeys.sticker(key);

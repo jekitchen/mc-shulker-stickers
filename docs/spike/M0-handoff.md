@@ -8,7 +8,7 @@ Branch: `spike/m0` (not pushed). Worktree: `.claude/worktrees/m0-spike`.
 
 | | Fabric | Paper / Folia / Canvas |
 |---|---|---|
-| Automated tests | 87 GameTests (incl. Fabric Permissions API and Common Protection API run in tests) | 107 unit tests (MockBukkit) + real-server self-test: 28 checks on Paper 249, 25 on Canvas 1010, 30 on Paper with real WorldGuard and GriefPrevention |
+| Automated tests | 87 GameTests (incl. Fabric Permissions API and Common Protection API run in tests) | 107 unit tests (MockBukkit) + real-server self-test: 28 checks on Paper 249, Folia 6 and Canvas 1010; 30 on Paper with real WorldGuard and GriefPrevention |
 | Shared `core` | 101 unit tests | (same) |
 | Editor, recolor, icon, rename, Save/Cancel | Done | Done |
 | Data survives break / pistons / explosions / dispensers | Done | Done (built-in datapack) |

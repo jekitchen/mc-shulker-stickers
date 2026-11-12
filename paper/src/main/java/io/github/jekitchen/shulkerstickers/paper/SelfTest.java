@@ -376,18 +376,20 @@ final class SelfTest {
 
     /** Owner decision 4: a box saved by Fabric (sticker in custom_data only) is adopted on Paper. */
     private void migrationTests(Block box) {
-        if (DisplayManager.FOLIA) {
-            plugin.getLogger().info("SELFTEST INFO migration checks skipped on Folia (console /data runs off-region)");
-            return;
-        }
         Block fabricBox = box.getRelative(0, 0, 6);
         fabricBox.setType(Material.AIR, false);
         fabricBox.setType(Material.SHULKER_BOX, false);
-        String fabricData = "{components:{\"minecraft:custom_data\":{PublicBukkitValues:{"
-                + "\"shulker_stickers:v\":1,\"shulker_stickers:icon_id\":\"minecraft:diamond\","
-                + "\"shulker_stickers:anchor\":\"lid\",\"shulker_stickers:rot\":0}}}}";
-        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "data merge block " + fabricBox.getX() + " "
-                + fabricBox.getY() + " " + fabricBox.getZ() + " " + fabricData);
+        java.util.Map<String, Object> fabricData = new java.util.LinkedHashMap<>();
+        fabricData.put("v", 1);
+        fabricData.put("icon_id", "minecraft:diamond");
+        fabricData.put("anchor", "lid");
+        fabricData.put("rot", 0);
+        try {
+            WorldMigration.putFabricStyle(fabricBox, fabricData);
+        } catch (ReflectiveOperationException e) {
+            check("set up a Fabric-style box: " + e, false);
+            return;
+        }
         boolean adopted = WorldMigration.migrate(fabricBox, plugin.getLogger());
         Optional<Sticker> read = StickerStore.read(((ShulkerBox) fabricBox.getState()).getPersistentDataContainer());
         check("a Fabric-saved box's sticker moves into persistent data",
@@ -397,8 +399,12 @@ final class SelfTest {
 
         // A Paper box placed from a stickered item: persistent data wins over the stale item copy.
         placeDecoratedBox(fabricBox, BlockFace.UP, ICON);
-        Bukkit.dispatchCommand(Bukkit.getConsoleSender(), "data merge block " + fabricBox.getX() + " "
-                + fabricBox.getY() + " " + fabricBox.getZ() + " " + fabricData);
+        try {
+            WorldMigration.putFabricStyle(fabricBox, fabricData);
+        } catch (ReflectiveOperationException e) {
+            check("set up a stale custom_data copy: " + e, false);
+            return;
+        }
         boolean replaced = WorldMigration.migrate(fabricBox, plugin.getLogger());
         Optional<Sticker> kept = StickerStore.read(((ShulkerBox) fabricBox.getState()).getPersistentDataContainer());
         check("persistent data is kept over a stale custom_data copy", !replaced && kept.equals(Optional.of(ICON)));
