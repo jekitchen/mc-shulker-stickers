@@ -133,7 +133,18 @@ echo "PASS default config written"; checks=$((checks + 1))
 no_errors
 cp "$log" "$dir/server-with-mod.log"
 
-# Phase 2 (AC-6): the same world with the mod removed.
+# Phase 2: restart with the mod. The decorated box now loads from disk with its chunk; drawing
+# it must not ask for the chunk that is still loading (that deadlocked the server thread).
+echo "Restarting with the mod (decorated box loads from disk)"
+run_server 'END-OF-CHECKS' \
+    "data get block 1 -50 1 components" \
+    "say END-OF-CHECKS"
+expect 'Shulker Stickers loaded' "the mod starts again"
+expect 'custom_data.*shulker_stickers:icon_id.*minecraft:diamond' "a saved decorated box loads without hanging the server"
+no_errors
+cp "$log" "$dir/server-restarted.log"
+
+# Phase 3 (AC-6): the same world with the mod removed.
 echo "Restarting without Shulker Stickers (uninstall check)"
 rm -f "$server/mods/$(basename "$jar")"
 run_server 'END-OF-CHECKS' \
@@ -151,5 +162,22 @@ expect 'custom_data.*shulker_stickers:icon_id' "its sticker data is kept for a r
 echo "PASS no display entities left in the world"; checks=$((checks + 1))
 no_errors
 cp "$log" "$dir/server-uninstalled.log"
+
+# Phase 4 (part of AC-14): reinstalled next to Ultimate Shulker Trims, the only competing
+# shulker mod with a 26.3 build (Paint your Shulkers! and HerrShulker stop at 1.21.x).
+trims_url="https://cdn.modrinth.com/data/253aEGkT/versions/6wmF0WPI/ultimate_shulker_trims-26.3.jar"
+fetch "$trims_url" "$cache/ultimate_shulker_trims-26.3.jar"
+cp "$jar" "$cache/ultimate_shulker_trims-26.3.jar" "$server/mods/"
+echo "Restarting with Shulker Stickers and Ultimate Shulker Trims"
+run_server 'END-OF-CHECKS' \
+    "shulkerstickers reload" \
+    "data get block 1 -50 1 components" \
+    "say END-OF-CHECKS"
+expect 'Shulker Stickers loaded' "Shulker Stickers loads next to Ultimate Shulker Trims"
+expect 'ultimate_shulker_trims' "Ultimate Shulker Trims loads"
+expect 'Shulker Stickers config reloaded' "/shulkerstickers reload still works"
+expect 'custom_data.*shulker_stickers:icon_id.*minecraft:diamond' "the box's sticker is still there after the reinstall"
+no_errors
+cp "$log" "$dir/server-with-trims.log"
 
 echo "Fabric smoke test: all $checks checks passed"

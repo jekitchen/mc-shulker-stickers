@@ -47,6 +47,40 @@ public class DisplayGameTests {
         return elements.stream().filter(type::isInstance).count();
     }
 
+    /**
+     * A box that loads with its chunk is drawn at the end of the tick, not during the load (asking
+     * for a chunk that is still loading hung the server; scripts/fabric-smoke.sh restarts a real
+     * server to check that). Here: a deferred box is drawn by the next level tick.
+     */
+    @GameTest
+    public void boxDeferredWhileItsChunkLoadsIsDrawnNextTick(GameTestHelper helper) {
+        ShulkerBoxBlockEntity box = TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
+        ServerLevel level = helper.getLevel();
+        StickerDisplays.remove(level, box.getBlockPos());
+        StickerDisplays.drawLater(level, box);
+        helper.assertFalse(StickerDisplays.isShown(level, box.getBlockPos()), "not drawn yet");
+        helper.runAfterDelay(1, () -> {
+            List<VirtualElement> elements = elements(helper, BOX);
+            helper.assertValueEqual(count(elements, ItemDisplayElement.class), 1L, "icons");
+            helper.assertValueEqual(count(elements, TextDisplayElement.class), 1L, "names");
+            helper.succeed();
+        });
+    }
+
+    /** A deferred box that is broken before its turn is never drawn. */
+    @GameTest
+    public void deferredBoxBrokenBeforeItsTurnIsNotDrawn(GameTestHelper helper) {
+        ShulkerBoxBlockEntity box = TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
+        ServerLevel level = helper.getLevel();
+        StickerDisplays.remove(level, box.getBlockPos());
+        StickerDisplays.drawLater(level, box);
+        helper.setBlock(BOX, Blocks.AIR);
+        helper.runAfterDelay(1, () -> {
+            helper.assertFalse(StickerDisplays.isShown(level, box.getBlockPos()), "nothing drawn for a broken box");
+            helper.succeed();
+        });
+    }
+
     @GameTest
     public void iconAndNameAreDrawn(GameTestHelper helper) {
         TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
