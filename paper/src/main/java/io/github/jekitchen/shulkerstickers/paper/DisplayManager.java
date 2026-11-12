@@ -177,7 +177,9 @@ class DisplayManager {
         Anchor anchor = sticker.map(Sticker::anchor).orElse(Anchor.LID);
         BlockFace face = Faces.iconFace(anchor, facing, sticker.flatMap(Sticker::face));
         Quaternionf rotation = IconOrientation.rotation(Faces.toCore(face), sticker.map(Sticker::rot).orElse(0));
-        Location at = block.getLocation().add(0.5, 0.5, 0.5).add(face.getDirection().multiply(DisplayLayout.FACE_OFFSET));
+        Location wanted = block.getLocation().add(0.5, 0.5, 0.5).add(face.getDirection().multiply(DisplayLayout.FACE_OFFSET));
+        Location at = spawnSpot(wanted, block);
+        Vector3f shift = wanted.toVector().subtract(at.toVector()).toVector3f();
 
         List<Entity> spawned = new ArrayList<>(2);
         if (drawIcon) {
@@ -187,7 +189,7 @@ class DisplayManager {
                 display.setItemStack(icon.get());
                 display.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
                 display.setViewRange(viewRange(config.iconViewRange()));
-                display.setTransformation(transform(rotation, up, DisplayLayout.ICON_SCALE));
+                display.setTransformation(transform(rotation, up, DisplayLayout.ICON_SCALE, shift));
             }));
         }
         if (drawName) {
@@ -199,7 +201,7 @@ class DisplayManager {
                 display.setShadowed(true);
                 display.setBackgroundColor(Color.fromARGB(0, 0, 0, 0));
                 display.setViewRange(viewRange(config.nameViewRange()));
-                display.setTransformation(transform(rotation, up, DisplayLayout.NAME_SCALE));
+                display.setTransformation(transform(rotation, up, DisplayLayout.NAME_SCALE, shift));
             }));
         }
         displays.put(key, new Drawn(spawned, drawIcon, drawName, false));
@@ -457,9 +459,37 @@ class DisplayManager {
      * The display stands just outside the face with no yaw or pitch; {@link IconOrientation}
      * turns it, and {@code up} moves it along the image's own up direction.
      */
-    private static Transformation transform(Quaternionf rotation, float up, float scale) {
-        Vector3f offset = rotation.transform(new Vector3f(0f, up, 0f));
+    /** {@code shift} moves the drawing from where the entity stands to where it should appear (world axes; displays keep yaw and pitch 0). */
+    private static Transformation transform(Quaternionf rotation, float up, float scale, Vector3f shift) {
+        Vector3f offset = rotation.transform(new Vector3f(0f, up, 0f)).add(shift);
         return new Transformation(offset, new Quaternionf(rotation),
                 new Vector3f(scale, scale, scale), new Quaternionf());
+    }
+
+    /**
+     * Where to spawn a display meant to appear at {@code wanted}, just in front of a face. For a
+     * box in a chunk's last column that spot is in the next chunk. If that chunk is loaded (the
+     * usual case: a player is near enough to see the display), the display goes there, where it
+     * gets the light in front of the face. If it isn't, spawning there would put the entity in an
+     * unloaded chunk (on Folia possibly another region's), so it stands just inside the box's own
+     * chunk instead and only its drawing is moved out; it is then one light level darker, because
+     * the box dims light by one.
+     */
+    static Location spawnSpot(Location wanted, Block box) {
+        int chunkX = wanted.getBlockX() >> 4;
+        int chunkZ = wanted.getBlockZ() >> 4;
+        boolean sameChunk = chunkX == box.getX() >> 4 && chunkZ == box.getZ() >> 4;
+        return sameChunk || box.getWorld().isChunkLoaded(chunkX, chunkZ) ? wanted : insideOwnChunk(wanted, box);
+    }
+
+    /** {@code wanted}, moved just inside the box's own chunk if it lies past the chunk's edge. */
+    static Location insideOwnChunk(Location wanted, Block box) {
+        double minX = (box.getX() >> 4) << 4;
+        double minZ = (box.getZ() >> 4) << 4;
+        double margin = 1.0E-3;
+        Location at = wanted.clone();
+        at.setX(Math.clamp(wanted.getX(), minX + margin, minX + 16 - margin));
+        at.setZ(Math.clamp(wanted.getZ(), minZ + margin, minZ + 16 - margin));
+        return at;
     }
 }

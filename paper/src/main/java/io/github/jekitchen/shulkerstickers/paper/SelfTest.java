@@ -633,6 +633,10 @@ final class SelfTest {
             }
         }
         removeItemsNear(out, 4);
+        // The explosion check above drops items that fall onto this spot; a solid block over the
+        // hopper stops it collecting them (it then only takes what it's given here).
+        removeItemsNear(hopper, 6);
+        hopper.getRelative(BlockFace.UP).setType(Material.BARRIER, false);
         java.util.Set<java.util.UUID> oldItems = itemIds(out, 16);
         Sticker side = new Sticker(ICON.iconId(), ICON.iconVisual(), Anchor.SIDE, 0, Optional.of(Face.EAST));
         ItemStack stack = new ItemStack(Material.LIME_SHULKER_BOX);
@@ -652,7 +656,11 @@ final class SelfTest {
 
         Bukkit.getRegionScheduler().runDelayed(plugin, origin, t -> {
             ItemStack moved = ((org.bukkit.block.Chest) chest.getState()).getInventory().getItem(0);
-            check("PRD 6.2: a stickered box item moved by a hopper keeps its sticker (" + describe(moved) + ")",
+            java.util.List<String> stillInHopper = java.util.Arrays.stream(
+                            ((org.bukkit.block.Hopper) hopper.getState()).getInventory().getContents())
+                    .filter(java.util.Objects::nonNull).map(this::describe).toList();
+            check("PRD 6.2: a stickered box item moved by a hopper keeps its sticker (" + describe(moved)
+                            + "; still in the hopper: " + stillInHopper + ")",
                     moved != null && moved.getType() == Material.LIME_SHULKER_BOX
                             && StickerStore.read(moved.getPersistentDataContainer()).equals(Optional.of(side))
                             && total(hopper) == 0);
@@ -719,8 +727,73 @@ final class SelfTest {
             }
             displays.removeAll();
             uninstallWitness(origin);
-            summary();
+            // A box in the origin chunk's last column, facing chunk (1, 0), which is loaded here.
+            checkChunkEdge(origin.getWorld().getBlockAt(15, 250, 12), "next to a loaded chunk");
+            chunkEdgeTest(origin.getWorld(), this::summary);
         }, 3);
+    }
+
+    /**
+     * A box in a chunk's last column with its icon on the outward face. Runs at chunk (100, 100),
+     * far from spawn, so the neighbour (101, 100) is normally not loaded: the displays must then
+     * stand in the box's own chunk and not load or use the neighbour.
+     */
+    private void chunkEdgeTest(World world, Runnable then) {
+        Location edge = new Location(world, 100 * 16 + 15, 250, 100 * 16 + 8);
+        world.getChunkAtAsync(edge).thenAccept(chunk -> Bukkit.getRegionScheduler().execute(plugin, edge, () -> {
+            chunk.addPluginChunkTicket(plugin);
+            try {
+                checkChunkEdge(edge.getBlock(), "next to an unloaded chunk");
+            } finally {
+                chunk.removePluginChunkTicket(plugin);
+                then.run();
+            }
+        }));
+    }
+
+    /**
+     * Places a box at {@code box} (a chunk's last x column) with its icon and name on the east
+     * face, then checks: the drawing appears just in front of the face; the displays stand in the
+     * next chunk if it is loaded, else in the box's own chunk; and the next chunk isn't loaded by it.
+     */
+    private void checkChunkEdge(Block box, String label) {
+        World world = box.getWorld();
+        int ownChunk = box.getX() >> 4;
+        int chunkZ = box.getZ() >> 4;
+        boolean neighbourBefore = world.isChunkLoaded(ownChunk + 1, chunkZ);
+        Sticker outward = new Sticker(ICON.iconId(), ICON.iconVisual(), Anchor.SIDE, 0, Optional.of(Face.EAST));
+        String error = "";
+        java.util.List<Entity> shown = java.util.List.of();
+        try {
+            placeDecoratedBox(box, BlockFace.UP, outward);
+            displays.forceNearby(true);
+            displays.refresh(box);
+            shown = displays.displaysAt(box);
+        } catch (RuntimeException e) {
+            error = "; error: " + e;
+            plugin.getLogger().log(java.util.logging.Level.WARNING, "SELFTEST chunk edge", e);
+        }
+        int expectedChunk = neighbourBefore ? ownChunk + 1 : ownChunk;
+        boolean rightChunk = shown.stream().allMatch(e -> e.getLocation().getBlockX() >> 4 == expectedChunk
+                && e.getLocation().getBlockZ() >> 4 == chunkZ);
+        boolean neighbourAfter = world.isChunkLoaded(ownChunk + 1, chunkZ);
+        // Where each display is drawn: its position plus its translation (world axes, yaw and pitch 0).
+        double wantedX = box.getX() + 0.5 + io.github.jekitchen.shulkerstickers.core.display.DisplayLayout.FACE_OFFSET;
+        java.util.List<Double> drawnX = shown.stream()
+                .map(e -> e.getLocation().getX() + ((Display) e).getTransformation().getTranslation().x())
+                .toList();
+        boolean drawnInFront = drawnX.stream().allMatch(x -> Math.abs(x - wantedX) < 1.0E-3);
+        check("a box on a chunk edge " + label + " draws its outward icon and name in front of the face, standing in chunk "
+                        + expectedChunk + " (entities at " + shown.stream().map(e -> e.getLocation().toVector().toString()).toList()
+                        + ", drawn at x " + drawnX + ", wanted " + wantedX
+                        + "; neighbour loaded before " + neighbourBefore + ", after " + neighbourAfter + error + ")",
+                error.isEmpty() && shown.size() == 2 && rightChunk && drawnInFront
+                        && neighbourBefore == neighbourAfter);
+        try {
+            displays.remove(BlockKey.of(box));
+        } finally {
+            box.setType(Material.AIR, false);
+        }
     }
 
     /**
