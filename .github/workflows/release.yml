@@ -3,6 +3,10 @@ name: Release
 # Pushing a tag such as v0.1.0-alpha.1 builds and tests that commit, then creates a DRAFT
 # GitHub release with both jars attached. Nothing is public until the draft is published by
 # hand. Modrinth and Hangar uploads are manual (see docs/release/README.md).
+#
+# Two jobs: the checks run jars downloaded at run time (Fabric API, Canvas, claim plugins), so
+# they run with a read-only token that isn't kept on disk. Only the second job, which runs no
+# downloaded code, can write the release.
 on:
   push:
     tags: ["v*"]
@@ -11,13 +15,16 @@ permissions:
   contents: read
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    permissions:
-      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      mc: ${{ steps.version.outputs.mc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-java@v6
         with:
@@ -44,7 +51,7 @@ jobs:
       - name: Smoke test the Fabric jar
         run: scripts/fabric-smoke.sh
 
-      - name: Self-test on Paper, Folia and Canvas
+      - name: Self-test on Paper (with the uninstall check), Folia and Canvas
         run: |
           scripts/paper-uninstall.sh
           scripts/selftest.sh runFolia
@@ -54,26 +61,49 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          # The section under "## <version>", up to the next "## " heading.
+          # The section whose heading is exactly "## <version>" or "## <version> (...)", up to
+          # the next "## " heading. (A plain prefix match would let 0.1.0 pick up 0.1.0-alpha.1.)
+          mkdir -p build/release
           awk -v v="$VERSION" '
-            /^## / { if (found) exit; if (index($0, "## " v) == 1) { found = 1; next } }
+            /^## / { if (found) exit; if ($0 == "## " v || index($0, "## " v " ") == 1) { found = 1; next } }
             found { print }
-          ' CHANGELOG.md > build/release-notes.md
-          if [ ! -s build/release-notes.md ]; then
+          ' CHANGELOG.md > build/release/notes.md
+          if [ ! -s build/release/notes.md ]; then
             echo "::error::CHANGELOG.md has no section for ${VERSION}"
             exit 1
           fi
+          cp "fabric/build/libs/shulker-stickers-fabric-${VERSION}+${{ steps.version.outputs.mc }}.jar" \
+             "paper/build/libs/shulker-stickers-paper-${VERSION}+${{ steps.version.outputs.mc }}.jar" \
+             build/release/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: build/release/
+          if-no-files-found: error
+
+  draft:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: release
+          path: release
 
       - name: Create a draft release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-          MC: ${{ steps.version.outputs.mc }}
+          VERSION: ${{ needs.build.outputs.version }}
+          MC: ${{ needs.build.outputs.mc }}
         run: |
           prerelease=""
           case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
-          gh release create "${GITHUB_REF_NAME}" --draft $prerelease \
+          gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --draft $prerelease \
             --title "Shulker Stickers ${VERSION} for Minecraft ${MC}" \
-            --notes-file build/release-notes.md \
-            fabric/build/libs/shulker-stickers-fabric-${VERSION}+${MC}.jar \
-            paper/build/libs/shulker-stickers-paper-${VERSION}+${MC}.jar
+            --notes-file release/notes.md \
+            "release/shulker-stickers-fabric-${VERSION}+${MC}.jar" \
+            "release/shulker-stickers-paper-${VERSION}+${MC}.jar"

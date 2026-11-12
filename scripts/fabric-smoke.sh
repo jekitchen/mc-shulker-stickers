@@ -78,7 +78,11 @@ feed() { # answer-pattern command...
     until seen 'Done \([0-9.]+s\)!'; do
         i=$((i + 1)); [ "$i" -gt "$limit" ] && { echo stop; return; }; sleep 1
     done
-    printf '%s\n' "$@"
+    local cmd
+    for cmd in "$@"; do
+        # "WAIT n" pauses n seconds between commands.
+        case "$cmd" in WAIT\ *) sleep "${cmd#WAIT }" ;; *) echo "$cmd" ;; esac
+    done
     i=0
     until seen "$answer"; do
         i=$((i + 1)); [ "$i" -gt 60 ] && break; sleep 1
@@ -136,11 +140,24 @@ cp "$log" "$dir/server-with-mod.log"
 # Phase 2: restart with the mod. The decorated box now loads from disk with its chunk; drawing
 # it must not ask for the chunk that is still loading (that deadlocked the server thread).
 echo "Restarting with the mod (decorated box loads from disk)"
+# Then a decorated box in a far chunk: once nothing keeps that chunk loaded, it must unload
+# (looking the box up every tick used to keep its chunk loaded for good).
 run_server 'END-OF-CHECKS' \
     "data get block 1 -50 1 components" \
+    "forceload add 1000 1000" \
+    "WAIT 2" \
+    "setblock 1000 -50 1000 $box" \
+    "shulkerstickers reload" \
+    "WAIT 2" \
+    "execute if loaded 1000 -50 1000 run say FAR-CHUNK-LOADED" \
+    "forceload remove 1000 1000" \
+    "WAIT 10" \
+    "execute unless loaded 1000 -50 1000 run say FAR-CHUNK-UNLOADED" \
     "say END-OF-CHECKS"
 expect 'Shulker Stickers loaded' "the mod starts again"
 expect 'custom_data.*shulker_stickers:icon_id.*minecraft:diamond' "a saved decorated box loads without hanging the server"
+expect 'FAR-CHUNK-LOADED' "a far chunk with a decorated box is loaded while force-loaded"
+expect 'FAR-CHUNK-UNLOADED' "that chunk unloads once nothing keeps it loaded"
 no_errors
 cp "$log" "$dir/server-restarted.log"
 

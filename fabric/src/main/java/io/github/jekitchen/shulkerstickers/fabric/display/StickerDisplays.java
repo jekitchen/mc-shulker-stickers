@@ -91,7 +91,7 @@ public final class StickerDisplays {
     }
 
     public static void refresh(ServerLevel level, BlockPos pos) {
-        if (level.getBlockEntity(pos) instanceof ShulkerBoxBlockEntity box) {
+        if (loadedBox(level, pos) instanceof ShulkerBoxBlockEntity box) {
             show(level, box);
         } else {
             remove(level, pos);
@@ -153,7 +153,7 @@ public final class StickerDisplays {
         Map<BlockPos, ElementHolder> holders = HOLDERS.get(level);
         if (holders != null && !holders.isEmpty()) {
             for (BlockPos pos : new ArrayList<>(holders.keySet())) {
-                if (level.getBlockEntity(pos) instanceof ShulkerBoxBlockEntity box && isOpen(box)) {
+                if (loadedBox(level, pos) instanceof ShulkerBoxBlockEntity box && isOpen(box)) {
                     remove(level, pos);
                     HIDDEN.computeIfAbsent(level, l -> new HashSet<>()).add(pos);
                 }
@@ -162,7 +162,7 @@ public final class StickerDisplays {
         Set<BlockPos> hidden = HIDDEN.get(level);
         if (hidden != null && !hidden.isEmpty()) {
             for (BlockPos pos : new ArrayList<>(hidden)) {
-                if (!(level.getBlockEntity(pos) instanceof ShulkerBoxBlockEntity box)) {
+                if (!(loadedBox(level, pos) instanceof ShulkerBoxBlockEntity box)) {
                     hidden.remove(pos);
                 } else if (!isOpen(box)) {
                     hidden.remove(pos);
@@ -196,6 +196,18 @@ public final class StickerDisplays {
                 show(level, box);
             }
         }
+    }
+
+    /**
+     * The block entity at {@code pos} if its chunk is fully loaded. Unlike
+     * {@code Level#getBlockEntity}, this never loads the chunk or adds a ticket to it: on the
+     * server thread that call goes through {@code getChunk(..., true)}, which adds a one-tick
+     * ticket on a cache miss. (In a test the chunk still unloaded, but there is no reason for a
+     * per-tick pass over drawn boxes to touch chunk tickets at all.)
+     */
+    private static net.minecraft.world.level.block.entity.@Nullable BlockEntity loadedBox(ServerLevel level, BlockPos pos) {
+        LevelChunk chunk = loadedChunk(level, pos);
+        return chunk == null ? null : chunk.getBlockEntity(pos);
     }
 
     /** The chunk at {@code pos} if it is fully loaded; never loads it or waits for it. */

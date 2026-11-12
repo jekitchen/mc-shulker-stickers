@@ -67,14 +67,18 @@ public class DisplayGameTests {
         });
     }
 
-    /** A deferred box that is broken before its turn is never drawn. */
+    /**
+     * A deferred box that is gone by its turn is never drawn. It is queued after it was broken,
+     * so the unload cleanup can't take it off the queue first: the end-of-tick pass itself must
+     * skip it.
+     */
     @GameTest
     public void deferredBoxBrokenBeforeItsTurnIsNotDrawn(GameTestHelper helper) {
         ShulkerBoxBlockEntity box = TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
         ServerLevel level = helper.getLevel();
         StickerDisplays.remove(level, box.getBlockPos());
-        StickerDisplays.drawLater(level, box);
         helper.setBlock(BOX, Blocks.AIR);
+        StickerDisplays.drawLater(level, box);
         helper.runAfterDelay(1, () -> {
             helper.assertFalse(StickerDisplays.isShown(level, box.getBlockPos()), "nothing drawn for a broken box");
             helper.succeed();

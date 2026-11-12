@@ -46,4 +46,23 @@ if [ "$fail" -ne 0 ] || [ "$pass" -eq 0 ]; then
     echo "::error::$task: $fail self-test check(s) failed, $pass passed"
     exit 1
 fi
+if [ "$status" -ne 0 ]; then
+    echo "::error::$task: all checks passed but Gradle exited with $status; see $log"
+    tail -n 40 "$log"
+    exit 1
+fi
+
+# A step that throws before its checks run still ends with fail=0, so require at least the
+# number of checks each server runs today. Raise these when checks are added.
+case "$task" in
+    runServer|runClaims) min=48 ;;
+    runFolia|runCanvas) min=46 ;;
+    *) min=1 ;;
+esac
+min="${SELFTEST_MIN:-$min}"
+if [ "$pass" -lt "$min" ]; then
+    echo "::error::$task: only $pass checks ran (expected at least $min); a step may have stopped early, see $log"
+    grep -nE "Exception|SELFTEST crash" "$log" | head -n 20
+    exit 1
+fi
 echo "$task: all $pass self-test checks passed"

@@ -727,9 +727,17 @@ final class SelfTest {
             }
             displays.removeAll();
             uninstallWitness(origin);
-            // A box in the origin chunk's last column, facing chunk (1, 0), which is loaded here.
-            checkChunkEdge(origin.getWorld().getBlockAt(15, 250, 12), "next to a loaded chunk");
-            chunkEdgeTest(origin.getWorld(), this::summary);
+            // A box in the origin chunk's last column, facing chunk (1, 0), which is held loaded.
+            World world = origin.getWorld();
+            world.getChunkAtAsync(1, 0).thenAccept(neighbour -> Bukkit.getRegionScheduler().execute(plugin, origin, () -> {
+                neighbour.addPluginChunkTicket(plugin);
+                try {
+                    checkChunkEdge(world.getBlockAt(15, 250, 12), "next to a loaded chunk", true);
+                } finally {
+                    neighbour.removePluginChunkTicket(plugin);
+                    chunkEdgeTest(world, this::summary);
+                }
+            }));
         }, 3);
     }
 
@@ -743,7 +751,7 @@ final class SelfTest {
         world.getChunkAtAsync(edge).thenAccept(chunk -> Bukkit.getRegionScheduler().execute(plugin, edge, () -> {
             chunk.addPluginChunkTicket(plugin);
             try {
-                checkChunkEdge(edge.getBlock(), "next to an unloaded chunk");
+                checkChunkEdge(edge.getBlock(), "next to an unloaded chunk", false);
             } finally {
                 chunk.removePluginChunkTicket(plugin);
                 then.run();
@@ -756,11 +764,13 @@ final class SelfTest {
      * face, then checks: the drawing appears just in front of the face; the displays stand in the
      * next chunk if it is loaded, else in the box's own chunk; and the next chunk isn't loaded by it.
      */
-    private void checkChunkEdge(Block box, String label) {
+    private void checkChunkEdge(Block box, String label, boolean neighbourShouldBeLoaded) {
         World world = box.getWorld();
         int ownChunk = box.getX() >> 4;
         int chunkZ = box.getZ() >> 4;
         boolean neighbourBefore = world.isChunkLoaded(ownChunk + 1, chunkZ);
+        check("chunk-edge setup: the neighbouring chunk is " + (neighbourShouldBeLoaded ? "" : "not ") + "loaded",
+                neighbourBefore == neighbourShouldBeLoaded);
         Sticker outward = new Sticker(ICON.iconId(), ICON.iconVisual(), Anchor.SIDE, 0, Optional.of(Face.EAST));
         String error = "";
         java.util.List<Entity> shown = java.util.List.of();

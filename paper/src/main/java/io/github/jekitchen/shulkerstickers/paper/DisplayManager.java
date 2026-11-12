@@ -294,7 +294,10 @@ class DisplayManager {
             boolean wantName = parts.name() && (players == null || inRange(block, players, config.nameViewRange()));
             boolean hasIcon = drawn != null && drawn.icon();
             boolean hasName = drawn != null && drawn.name();
-            if (wantIcon != hasIcon || wantName != hasName) {
+            // A display standing in a neighbouring chunk is discarded when that chunk unloads; draw it again.
+            boolean lost = drawn != null && drawn.entities().stream()
+                    .anyMatch(e -> !Bukkit.isOwnedByCurrentRegion(e) || !e.isValid());
+            if (wantIcon != hasIcon || wantName != hasName || (lost && (wantIcon || wantName))) {
                 refresh(block);
             }
         }
@@ -479,13 +482,15 @@ class DisplayManager {
         int chunkX = wanted.getBlockX() >> 4;
         int chunkZ = wanted.getBlockZ() >> 4;
         boolean sameChunk = chunkX == box.getX() >> 4 && chunkZ == box.getZ() >> 4;
-        return sameChunk || box.getWorld().isChunkLoaded(chunkX, chunkZ) ? wanted : insideOwnChunk(wanted, box);
+        boolean neighbourUsable = box.getWorld().isChunkLoaded(chunkX, chunkZ)
+                && Bukkit.isOwnedByCurrentRegion(box.getWorld(), chunkX, chunkZ);
+        return sameChunk || neighbourUsable ? wanted : insideOwnChunk(wanted, box.getX(), box.getZ());
     }
 
-    /** {@code wanted}, moved just inside the box's own chunk if it lies past the chunk's edge. */
-    static Location insideOwnChunk(Location wanted, Block box) {
-        double minX = (box.getX() >> 4) << 4;
-        double minZ = (box.getZ() >> 4) << 4;
+    /** {@code wanted}, moved just inside the chunk of the box at {@code boxX, boxZ} if it lies past the chunk's edge. */
+    static Location insideOwnChunk(Location wanted, int boxX, int boxZ) {
+        double minX = (boxX >> 4) << 4;
+        double minZ = (boxZ >> 4) << 4;
         double margin = 1.0E-3;
         Location at = wanted.clone();
         at.setX(Math.clamp(wanted.getX(), minX + margin, minX + 16 - margin));
