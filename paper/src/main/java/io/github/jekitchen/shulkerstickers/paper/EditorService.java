@@ -601,7 +601,11 @@ final class EditorService implements Listener {
         }
         UUID playerId = player.getUniqueId();
         plugin.getServer().getRegionScheduler().execute(plugin, location, () -> {
-            SaveResult result = apply(location.getBlock(), request);
+            // Claims are checked again at Save, as on Fabric; the opt-in test event fires only at
+            // open, so a logging plugin sees at most one test placement per edit.
+            SaveResult result = claims.mayEdit(player, location.getBlock(), false)
+                    ? apply(location.getBlock(), request)
+                    : new SaveResult(false, TextKeys.DENY_PROTECTED, NOTHING, true);
             List<Cost> refund = paid ? Costs.forChanges(unapplied(changes, result), config) : List.of();
             Runnable gone = () -> payments.owe(playerId, refund);
             var task = player.getScheduler().run(plugin, t -> finishSave(player, session, result, refund), gone);

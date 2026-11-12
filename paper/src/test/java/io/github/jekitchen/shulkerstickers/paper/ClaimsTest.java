@@ -135,6 +135,42 @@ class ClaimsTest {
     }
 
     @Test
+    void claimsAreCheckedAgainAtSave() {
+        java.util.concurrent.atomic.AtomicBoolean allow = new java.util.concurrent.atomic.AtomicBoolean(true);
+        ClaimCheck flips = new ClaimCheck() {
+            @Override
+            public String plugin() {
+                return "WorldGuard";
+            }
+
+            @Override
+            public boolean canBuild(Player p, Block b) {
+                return allow.get();
+            }
+        };
+        Settings settings = Settings.of(StickerConfig.DEFAULTS);
+        EditorService editor = new EditorService(plugin, settings,
+                new DisplayManager(plugin, settings, (anchor, radius, vertical) -> List.of()), claims(flips));
+        server.getPluginManager().registerEvents(new GestureListener(editor), plugin);
+        server.getPluginManager().registerEvents(editor, plugin);
+        player.setSneaking(true);
+        server.getPluginManager().callEvent(new org.bukkit.event.player.PlayerInteractEvent(player,
+                org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK, null, box, org.bukkit.block.BlockFace.UP,
+                org.bukkit.inventory.EquipmentSlot.HAND));
+        assertTrue(player.getOpenInventory().getTopInventory().getHolder() instanceof EditorHolder, "editor opened");
+
+        allow.set(false); // e.g. the player was untrusted while the editor was open
+        for (int slot : new int[] {io.github.jekitchen.shulkerstickers.core.BoxColor.RED.ordinal(),
+                io.github.jekitchen.shulkerstickers.core.editor.EditorLayout.SAVE}) {
+            server.getPluginManager().callEvent(new org.bukkit.event.inventory.InventoryClickEvent(
+                    player.getOpenInventory(), org.bukkit.event.inventory.InventoryType.SlotType.CONTAINER, slot,
+                    org.bukkit.event.inventory.ClickType.LEFT, org.bukkit.event.inventory.InventoryAction.PICKUP_ALL));
+        }
+        server.getScheduler().performTicks(3);
+        assertEquals(Material.SHULKER_BOX, box.getType(), "the recolor was refused");
+    }
+
+    @Test
     void ourListenersIgnoreTheTestEvent() {
         Settings settings = Settings.of(StickerConfig.DEFAULTS);
         server.getPluginManager().registerEvents(new HelpListener(settings), plugin);
