@@ -170,6 +170,22 @@ final class SelfTest {
         Sticker junk = new Sticker(Optional.of("minecraft:stone"), Optional.of("{\"minecraft:dyed_color\":\"red\"}"),
                 Anchor.LID, 0, Optional.empty());
         check("unreadable icon visuals draw nothing instead of crashing", IconItems.render(junk, settings.config()).isEmpty());
+
+        // Security: an item_model can't make an allowed item look like a blocklisted one.
+        io.github.jekitchen.shulkerstickers.core.config.StickerConfig blocksDirt = io.github.jekitchen.shulkerstickers.core.config.ConfigLoader
+                .parse("{\"icon\":{\"blocklist\":[\"minecraft:dirt\"]}}").config();
+        Sticker disguised = new Sticker(Optional.of("minecraft:stone"), Optional.of("{\"minecraft:item_model\":\"minecraft:dirt\"}"),
+                Anchor.LID, 0, Optional.empty());
+        Sticker harmless = new Sticker(Optional.of("minecraft:stone"), Optional.of("{\"minecraft:item_model\":\"minecraft:cobblestone\"}"),
+                Anchor.LID, 0, Optional.empty());
+        check("an item_model naming a blocklisted item isn't drawn; an allowed one is",
+                IconItems.render(disguised, blocksDirt).isEmpty() && IconItems.render(harmless, blocksDirt).isPresent());
+        // Security: capturing the off-hand item keeps only visual components, however much else it carries.
+        ItemStack heavy = new ItemStack(Material.LEATHER_HELMET);
+        heavy.editMeta(LeatherArmorMeta.class, meta -> meta.setColor(Color.fromRGB(0xFF0000)));
+        heavy.editMeta(meta -> meta.lore(java.util.Collections.nCopies(200, Component.text("x".repeat(100)))));
+        check("capturing an item keeps only its visual components",
+                IconItems.capture(heavy).visual().equals(Optional.of("{\"minecraft:dyed_color\":16711680}")));
     }
 
     private void watchObserver(Location at, Block observerBlock, AtomicBoolean pulsed, int ticks, Runnable then) {

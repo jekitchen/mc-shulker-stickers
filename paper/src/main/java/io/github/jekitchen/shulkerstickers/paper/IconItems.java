@@ -33,7 +33,16 @@ final class IconItems {
     static Captured capture(ItemStack stack) {
         String id = stack.getType().getKey().toString();
         try {
-            JsonObject json = Bukkit.getUnsafe().serializeItemAsJson(stack.asOne());
+            // Only the visual components are serialized: the held item can be anything (a box full
+            // of books), and serializing all of it on every click would be costly.
+            ItemStack visualOnly;
+            try {
+                visualOnly = ItemStack.of(stack.getType());
+                visualOnly.copyDataFrom(stack, type -> IconRules.isVisualComponent(type.key().asString()));
+            } catch (RuntimeException e) {
+                visualOnly = stack.asOne(); // test servers (MockBukkit) lack copyDataFrom; real ones have it
+            }
+            JsonObject json = Bukkit.getUnsafe().serializeItemAsJson(visualOnly);
             JsonObject components = json.has("components") && json.get("components").isJsonObject()
                     ? json.getAsJsonObject("components")
                     : new JsonObject();
@@ -67,6 +76,15 @@ final class IconItems {
         if (components.get().isEmpty()) {
             return Optional.of(new ItemStack(material));
         }
+        // An item_model can make an allowed item look like a blocked one: check the item it names too.
+        if (components.get().get("minecraft:item_model") instanceof com.google.gson.JsonPrimitive model && model.isString()) {
+            String modelId = IconRules.withNamespace(model.getAsString());
+            Material looksLike = Material.matchMaterial(modelId);
+            if (IconRules.isBlocked(modelId, config.iconBlocklist())
+                    || (looksLike != null && looksLike.isItem() && inBlockedTag(looksLike, config))) {
+                return Optional.empty();
+            }
+        }
         try {
             JsonObject json = new JsonObject();
             json.addProperty("id", IconRules.withNamespace(id));
@@ -85,7 +103,12 @@ final class IconItems {
         if (material == null || !material.isItem() || material.isAir()) {
             return false;
         }
-        if (IconRules.isBlocked(id, config.iconBlocklist()) || inBlockedTag(material, config)) {
+        // Only the exact form ("minecraft:stone", or "stone"): matchMaterial also takes "STONE" and
+        // "minecraft:STONE", which a crafted item could use to slip past the blocklist's IDs.
+        if (!material.getKey().toString().equals(IconRules.withNamespace(id))) {
+            return false;
+        }
+        if (IconRules.isBlocked(material.getKey().toString(), config.iconBlocklist()) || inBlockedTag(material, config)) {
             return false;
         }
         Sticker sizeCheck = new Sticker(Optional.of(id), visual,

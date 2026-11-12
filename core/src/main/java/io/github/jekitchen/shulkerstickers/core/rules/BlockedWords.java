@@ -43,9 +43,58 @@ public final class BlockedWords {
         return new BlockedWords(entries, warnings);
     }
 
-    /** The first entry (as written in the config) that matches {@code name}. */
+    /** How long one name may be checked against one entry before it is refused anyway. */
+    static final long MATCH_BUDGET_NANOS = 50_000_000L;
+
+    /**
+     * The first entry (as written in the config) that matches {@code name}. A regular expression
+     * written so that some inputs take very long (catastrophic backtracking, e.g. {@code (a|aa)+$})
+     * would let a player stall the server with a chosen name; a check that runs out of its time
+     * budget counts as a match, so the name is refused and nothing stalls.
+     */
     public Optional<String> firstMatch(String name) {
-        return entries.stream().filter(e -> e.pattern().matcher(name).find()).map(Entry::source).findFirst();
+        for (Entry entry : entries) {
+            try {
+                if (entry.pattern().matcher(new Budgeted(name, System.nanoTime() + MATCH_BUDGET_NANOS)).find()) {
+                    return Optional.of(entry.source());
+                }
+            } catch (OutOfTime e) {
+                return Optional.of(entry.source());
+            }
+        }
+        return Optional.empty();
+    }
+
+    private static final class OutOfTime extends RuntimeException {
+        OutOfTime() {
+            super(null, null, false, false);
+        }
+    }
+
+    /** The name, read by the matcher; reading it past the deadline stops the match. */
+    private record Budgeted(CharSequence text, long deadline) implements CharSequence {
+        @Override
+        public char charAt(int index) {
+            if (System.nanoTime() > deadline) {
+                throw new OutOfTime();
+            }
+            return text.charAt(index);
+        }
+
+        @Override
+        public int length() {
+            return text.length();
+        }
+
+        @Override
+        public CharSequence subSequence(int start, int end) {
+            return new Budgeted(text.subSequence(start, end), deadline);
+        }
+
+        @Override
+        public String toString() {
+            return text.toString();
+        }
     }
 
     public List<String> warnings() {

@@ -146,6 +146,32 @@ public class IconGameTests {
         helper.succeed();
     }
 
+    /** Security: an item_model can't make an allowed item look like a blocklisted one. */
+    @GameTest
+    public void itemModelOfABlockedItemIsNotDrawn(GameTestHelper helper) {
+        var registries = helper.getLevel().registryAccess();
+        StickerConfig blocksDirt = config("{\"icon\":{\"blocklist\":[\"minecraft:dirt\"]}}");
+        Sticker disguised = new Sticker(Optional.of("minecraft:stone"), Optional.of("{\"minecraft:item_model\":\"minecraft:dirt\"}"),
+                Anchor.LID, 0, Optional.empty());
+        helper.assertTrue(Icons.displayStack(disguised, blocksDirt, registries).isEmpty(), "stone drawn as blocked dirt");
+        Sticker harmless = new Sticker(Optional.of("minecraft:stone"), Optional.of("{\"minecraft:item_model\":\"minecraft:cobblestone\"}"),
+                Anchor.LID, 0, Optional.empty());
+        helper.assertTrue(Icons.displayStack(harmless, blocksDirt, registries).isPresent(), "an allowed model is still drawn");
+        helper.succeed();
+    }
+
+    /** Security: "Use off-hand" stores only visual components, however much else the held item carries. */
+    @GameTest
+    public void onlyVisualComponentsAreCaptured(GameTestHelper helper) {
+        ItemStack heavy = new ItemStack(Items.LEATHER_HELMET);
+        heavy.set(net.minecraft.core.component.DataComponents.DYED_COLOR, new net.minecraft.world.item.component.DyedItemColor(0xFF0000));
+        heavy.set(net.minecraft.core.component.DataComponents.LORE, new net.minecraft.world.item.component.ItemLore(
+                java.util.Collections.nCopies(200, net.minecraft.network.chat.Component.literal("x".repeat(100)))));
+        helper.assertValueEqual(Icons.visualOf(heavy, helper.getLevel().registryAccess()),
+                Optional.of("{\"minecraft:dyed_color\":16711680}"), "only the dye is kept");
+        helper.succeed();
+    }
+
     @GameTest
     public void oversizedIconIsRefused(GameTestHelper helper) {
         ServerPlayer player = helper.makeMockServerPlayerInLevel();

@@ -44,6 +44,16 @@ class IconItemsTest {
                 BLOCKS_BEDROCK));
     }
 
+    /** Security: Material.matchMaterial also takes "BEDROCK" and "minecraft:BEDROCK"; those must not slip past the blocklist. */
+    @Test
+    void oddSpellingsOfAnItemIdAreRefused() {
+        assertFalse(IconItems.allowed("BEDROCK", Optional.empty(), BLOCKS_BEDROCK));
+        assertFalse(IconItems.allowed("minecraft:BEDROCK", Optional.empty(), BLOCKS_BEDROCK));
+        assertFalse(IconItems.allowed(" bedrock", Optional.empty(), BLOCKS_BEDROCK));
+        assertFalse(IconItems.allowed("COBBLESTONE", Optional.empty(), BLOCKS_BEDROCK), "only the exact form is accepted");
+        assertTrue(IconItems.allowed("cobblestone", Optional.empty(), BLOCKS_BEDROCK), "a missing namespace is fine");
+    }
+
     @Test
     void unknownOrNonItemIdsAreRefused() {
         assertFalse(IconItems.allowed("minecraft:not_a_real_item", Optional.empty(), StickerConfig.DEFAULTS));

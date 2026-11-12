@@ -512,8 +512,16 @@ final class EditorService implements Listener {
     }
 
     private void end(Session session) {
+        // Always: our paper must never reach the player when the rename screen goes away, also
+        // when a new editor replaces this one (opened on another box from the rename screen).
+        clearRenameView(session);
         sessions.remove(session.player, session);
-        locks.remove(session.box, session.player);
+        // The same player may already have a newer session on this box (reopened during a Save):
+        // that one holds the lock now.
+        Session current = sessions.get(session.player);
+        if (current == null || !current.box.equals(session.box)) {
+            locks.remove(session.box, session.player);
+        }
         // The reach watcher stops itself on its next run once the session is gone.
     }
 
