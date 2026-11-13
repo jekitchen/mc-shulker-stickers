@@ -72,6 +72,33 @@ Start a server with `./gradlew :fabric:runServer`, `:paper:runServer` or `:paper
 14. **Restart (both, 12 Nov fixes):** decorate a few boxes near spawn, restart the server, and check it starts and the icons and names show again. Also walk far away and back so their chunks unload and reload. Before the fixes, Fabric froze at "Preparing spawn area", and Paper didn't draw boxes in chunks that were loaded before the plugin (spawn chunks).
 15. **Chunk edge (Paper, 12 Nov change):** put a box in the last block column of a chunk (F3 shows chunk borders) with its icon on the face toward the next chunk. The icon shows in front of the face, at the same brightness as a box in the middle of a chunk.
 
+### Results: Fabric, owner with a vanilla 26.3 client (13 Nov 2026)
+
+Run on `feature/claims-bentobox-plotsquared` (0.1 plus the 0.2 lid and claims work), on `:fabric:runServer` with the showcase. All passed after two fixes made during the session (see check 7):
+
+- **1, 2, 3 (editor):**
+  - the gesture opens the editor, with no ghost block;
+  - shift-click, number keys, F, double-click, drag, Q, Ctrl+Q and clicking outside all leave nothing in the inventory or on the ground;
+  - rename costs 0 XP, the paper never reaches the inventory, and Esc returns to the editor;
+  - Save and Cancel work.
+- **4, 5, 6 (icons and names):** every facing and side face is outward and not mirrored, and lid rotations point the right way. The dyed helmet, glint, head and banner look like the items. Names are readable, a name with no icon is centered, the long name is cut and the hidden name is hidden.
+- **7 (lid motion):** passed after the two fixes (see check 7). With a vanilla client, the icon and name move with the lid.
+- **10 (lock key):** locked without the key; with the key in the off-hand the editor opens and offers only the key as the icon.
+- **14 (restart and chunk reload):** after a restart, and after going 200 blocks away for two minutes, every icon and name came back, with no duplicates and none missing.
+- **First-run tip and commands:**
+  - the tip appears on the first placement only, and `/shulkerstickers help` shows the same text;
+  - `inspect` and `toggle` work.
+
+### Results: Paper, owner with a vanilla 26.3 client (13 Nov 2026, in progress)
+
+- **4, 5, 6 (icons and names):** every row shows every expected icon and name.
+- **7 (lid motion), first try:** opening looked right, but on closing the icon and name dropped into the lid until it stopped. A packet log on the player's connection showed why:
+  - the plugin stepped once at the open or close event, which comes between ticks;
+  - its per-tick task then stepped again at the start of the next tick, before entity changes are sent;
+  - so every update was one step ahead of vanilla's lid. Opening, that's just above the lid; closing, it's inside.
+
+  Fixed: the first step is now taken by the per-tick task. **Still to recheck in game**, then the editor, the chunk edge (15), a restart (14) and the Fabric comparison (13).
+
 ## Files
 
 - Spec: `docs/PRD.md` (v0.5)

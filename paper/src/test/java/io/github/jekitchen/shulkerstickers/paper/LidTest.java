@@ -64,16 +64,26 @@ class LidTest {
         return player;
     }
 
+    /**
+     * A player opens or closes a box between ticks (packet handling). Vanilla starts the lid in the
+     * next tick, and the scheduler runs at the start of that tick, before entity changes are sent:
+     * so the first step is taken there, not at the event. Stepping at the event as well put the
+     * displays a step ahead of the lid; closing, that is inside the lid (seen in game, 13 Nov).
+     */
     @Test
-    void theLidStartsInTheTickTheBoxOpensAndClosesAndTakesTenTicks() {
+    void theLidStepsOncePerTickStartingTheTickAfterTheEvent() {
         displays.opened(key);
-        assertEquals(1, displays.lidTenths(key), "first step in the opening tick");
-        server.getScheduler().performTicks(12);
-        assertEquals(10, displays.lidTenths(key), "fully open");
+        assertEquals(0, displays.lidTenths(key), "nothing moves at the event itself");
+        server.getScheduler().performTicks(1);
+        assertEquals(1, displays.lidTenths(key), "first step in the tick vanilla starts the lid");
+        server.getScheduler().performTicks(9);
+        assertEquals(10, displays.lidTenths(key), "fully open after ten ticks");
         displays.closed(key, 10);
-        assertEquals(9, displays.lidTenths(key), "first step down in the closing tick");
-        server.getScheduler().performTicks(12);
-        assertEquals(0, displays.lidTenths(key), "shut");
+        assertEquals(10, displays.lidTenths(key), "nothing moves at the close event itself");
+        server.getScheduler().performTicks(1);
+        assertEquals(9, displays.lidTenths(key), "first step down in the tick vanilla starts closing");
+        server.getScheduler().performTicks(9);
+        assertEquals(0, displays.lidTenths(key), "shut after ten ticks");
     }
 
     @Test
@@ -85,6 +95,8 @@ class LidTest {
         int partWay = displays.lidTenths(key);
         assertTrue(partWay > 0 && partWay < 10, "part way down: " + partWay);
         displays.opened(key);
+        assertEquals(partWay, displays.lidTenths(key), "turns at the next tick, not at the event");
+        server.getScheduler().performTicks(1);
         assertEquals(partWay + 1, displays.lidTenths(key), "goes back up from where it was");
         server.getScheduler().performTicks(12);
         assertEquals(10, displays.lidTenths(key));

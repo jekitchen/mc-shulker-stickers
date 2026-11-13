@@ -337,8 +337,8 @@ class DisplayManager {
     }
 
     /**
-     * Starts the lid moving towards open or shut, one tenth per tick, taking the first step now
-     * (vanilla moves the lid in the tick it opens or closes). Only for boxes we draw.
+     * Starts the lid moving towards open or shut, one tenth per tick, the first step at the start
+     * of the next tick (the one in which vanilla starts the lid). Only for boxes we draw.
      */
     private void moveLid(BlockKey key, boolean opening) {
         Location location = key.location();
@@ -346,27 +346,23 @@ class DisplayManager {
             return;
         }
         LidState state = lids.computeIfAbsent(key, k -> new LidState());
-        boolean reversed = state.opening != opening;
         state.opening = opening;
         if (state.task != null) {
-            // Already moving: a reversal (reopened while closing, or the reverse) turns now.
-            if (reversed && stepLid(key, state)) {
-                cancelQuietly(state.task);
-                state.task = null;
-            }
-            return;
+            return; // already moving: a reversal turns at its next step
         }
-        if (!stepLid(key, state)) {
-            state.task = plugin.getServer().getRegionScheduler().runAtFixedRate(plugin, location, task -> {
-                LidState current = lids.get(key);
-                if (current == null || current.task != task || stepLid(key, current)) {
-                    if (current != null && current.task == task) {
-                        current.task = null;
-                    }
-                    cancelQuietly(task);
+        // Players open and close boxes between ticks; vanilla starts the lid in the next tick,
+        // whose scheduler pass (where this first runs) comes before entity changes are sent. So
+        // each step is sent with the lid's own step for that tick. Stepping at the event as well
+        // put the displays a step ahead: closing, inside the lid.
+        state.task = plugin.getServer().getRegionScheduler().runAtFixedRate(plugin, location, task -> {
+            LidState current = lids.get(key);
+            if (current == null || current.task != task || stepLid(key, current)) {
+                if (current != null && current.task == task) {
+                    current.task = null;
                 }
-            }, 1, 1);
-        }
+                cancelQuietly(task);
+            }
+        }, 1, 1);
     }
 
     /** Moves the lid one tenth and poses its displays; true when it has reached open or shut. */
