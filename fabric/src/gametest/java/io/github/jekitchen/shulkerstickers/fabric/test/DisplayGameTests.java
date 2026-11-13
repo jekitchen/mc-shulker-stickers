@@ -285,6 +285,53 @@ public class DisplayGameTests {
         });
     }
 
+    /**
+     * The lid's first step reaches players in the same tick as vanilla's "lid starts moving" block
+     * event, so the client moves both together from the first frame. Before, the pose was sent a
+     * tick later (aimed one step ahead): for that first tick the lid moved while the icon sat still,
+     * which the owner saw in game as the start being slightly out of step, opening and closing.
+     */
+    @GameTest(maxTicks = 60)
+    public void lidDisplaysFirstStepIsSentWithTheLid(GameTestHelper helper) {
+        ShulkerBoxBlockEntity box = TestBoxes.place(helper, BOX, BoxColor.UNDYED, Direction.UP);
+        ServerLevel level = helper.getLevel();
+        BlockPos pos = helper.absolutePos(BOX);
+        StickerDisplays.refresh(level, pos);
+        ItemDisplayElement icon = (ItemDisplayElement) elements(helper, BOX).stream()
+                .filter(ItemDisplayElement.class::isInstance).findFirst().orElseThrow();
+        org.joml.Vector3f rest = new org.joml.Vector3f(icon.getTranslation());
+        org.joml.Quaternionf restRotation = new org.joml.Quaternionf(icon.getLeftRotation());
+        org.joml.Vector3f up = new org.joml.Vector3f(0, 1, 0);
+        org.joml.Vector3f stand = new org.joml.Vector3f(0, (float) DisplayLayout.FACE_OFFSET, 0);
+
+        // One server tick of a box being opened, in vanilla's order: the block event, the box's own
+        // tick (the lid moves to 0.1), then the end-of-tick hook.
+        box.triggerEvent(1, 1);
+        ShulkerBoxBlockEntity.tick(level, pos, box.getBlockState(), box);
+        StickerDisplays.updateOpenBoxes(level);
+        org.joml.Vector3f want = io.github.jekitchen.shulkerstickers.core.display.LidMotion
+                .at(box.getProgress(1.0f), up, stand, rest, restRotation).translation();
+        helper.assertTrue(want.distance(new org.joml.Vector3f(icon.getTranslation())) < 1e-4f,
+                "opening: posed where the lid is now (" + icon.getTranslation() + ", lid at " + box.getProgress(1.0f) + ", expected " + want + ")");
+        helper.assertFalse(icon.isDirty(), "opening: the first step was sent in the same tick");
+
+        // Shut it again the same way: the first closing step goes out at once too.
+        helper.runAfterDelay(15, () -> {
+            box.triggerEvent(1, 0);
+            ShulkerBoxBlockEntity.tick(level, pos, box.getBlockState(), box);
+            StickerDisplays.updateOpenBoxes(level);
+            // Looked up again: a config reload in another GameTest may have redrawn every box.
+            ItemDisplayElement icon2 = (ItemDisplayElement) elements(helper, BOX).stream()
+                    .filter(ItemDisplayElement.class::isInstance).findFirst().orElseThrow();
+            org.joml.Vector3f closing = io.github.jekitchen.shulkerstickers.core.display.LidMotion
+                    .at(box.getProgress(1.0f), up, stand, rest, restRotation).translation();
+            helper.assertTrue(closing.distance(new org.joml.Vector3f(icon2.getTranslation())) < 1e-4f,
+                    "closing: posed where the lid is now (" + icon2.getTranslation() + ", lid at " + box.getProgress(1.0f) + ")");
+            helper.assertFalse(icon2.isDirty(), "closing: the first step was sent in the same tick");
+            helper.runAfterDelay(15, helper::succeed);
+        });
+    }
+
     @GameTest
     public void dispensedBoxPutsSideIconTowardTheDispenser(GameTestHelper helper) {
         // Dispenser west of the box position, facing east; the box is placed facing up.

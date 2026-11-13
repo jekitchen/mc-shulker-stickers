@@ -75,12 +75,14 @@ public final class StickerDisplays {
 
     /** The displays on a box's lid face, and the lid progress they were last drawn at. */
     private static final class Lid {
+        final ElementHolder holder;
         final Vector3f facing;
         final Vector3f standOffset;
         final List<Rest> rests;
         float shown;
 
-        Lid(Vector3f facing, Vector3f standOffset, List<Rest> rests) {
+        Lid(ElementHolder holder, Vector3f facing, Vector3f standOffset, List<Rest> rests) {
+            this.holder = holder;
             this.facing = facing;
             this.standOffset = standOffset;
             this.rests = rests;
@@ -96,6 +98,15 @@ public final class StickerDisplays {
                 rest.element().startInterpolation();
             }
             shown = progress;
+        }
+
+        /**
+         * Sends the new pose to players now. The holder doesn't tick on its own (nothing else about
+         * it changes), and sending in this tick puts the pose in the same batch as vanilla's lid
+         * update: the client then moves lid and displays together over the next tick.
+         */
+        void send() {
+            holder.tick();
         }
     }
 
@@ -209,15 +220,12 @@ public final class StickerDisplays {
                     continue;
                 }
                 if (lid != null) {
-                    // The pose set now reaches players with Polymer's update next tick, a tick after
-                    // the lid's own block event, so aim one step ahead while the lid is moving.
-                    float progress = switch (box.getAnimationStatus()) {
-                        case OPENING -> Math.min(1f, box.getProgress(1.0f) + LidMotion.STEP);
-                        case CLOSING -> Math.max(0f, box.getProgress(1.0f) - LidMotion.STEP);
-                        default -> box.getProgress(1.0f);
-                    };
+                    // Vanilla has moved the lid this tick and its update goes out at the end of
+                    // the tick; the pose sent now goes with it, and both move over the next tick.
+                    float progress = box.getProgress(1.0f);
                     if (progress != lid.shown) {
                         lid.moveTo(progress, true);
+                        lid.send();
                     }
                 } else if (isOpen(box)) {
                     if (toHide == null) {
@@ -354,15 +362,8 @@ public final class StickerDisplays {
             holder.addElement(label);
         });
 
-        // The display sits just outside the face (for light) but belongs to the box's own chunk,
-        // so a box on a chunk edge never loads or depends on the neighbouring chunk.
-        // Lid displays tick with the chunk: that tick is what sends a moved pose to players (at the
-        // end of the chunk's tick, so a pose set at the end of tick N goes out in tick N+1).
-        // Displays that never move don't tick, so a wall of side-icon boxes costs nothing per tick.
-        Vec3 at = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(DisplayLayout.FACE_OFFSET));
-        new ChunkAttachment(holder, chunk, at, onLid);
-        HOLDERS.computeIfAbsent(level, l -> new HashMap<>()).put(pos, holder);
-
+        // Lid-face displays: posed for the lid before they're attached, so a box drawn while
+        // (partly) open is sent to players already in place.
         if (onLid) {
             List<Rest> rests = new ArrayList<>();
             for (var element : holder.getElements()) {
@@ -371,13 +372,20 @@ public final class StickerDisplays {
                 }
             }
             Vector3f facingVec = new Vector3f(facing.getStepX(), facing.getStepY(), facing.getStepZ());
-            Lid lid = new Lid(facingVec, new Vector3f(facingVec).mul((float) DisplayLayout.FACE_OFFSET), rests);
+            Lid lid = new Lid(holder, facingVec, new Vector3f(facingVec).mul((float) DisplayLayout.FACE_OFFSET), rests);
             float progress = box.getProgress(1.0f);
             if (progress > 0) {
                 lid.moveTo(progress, false); // drawn while the box is (partly) open
             }
             LIDS.computeIfAbsent(level, l -> new HashMap<>()).put(pos, lid);
         }
+
+        // The display sits just outside the face (for light) but belongs to the box's own chunk,
+        // so a box on a chunk edge never loads or depends on the neighbouring chunk. It doesn't
+        // tick: a lid's moves are sent as they're made (Lid#send), and nothing else changes.
+        Vec3 at = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(DisplayLayout.FACE_OFFSET));
+        new ChunkAttachment(holder, chunk, at, false);
+        HOLDERS.computeIfAbsent(level, l -> new HashMap<>()).put(pos, holder);
     }
 
     /** The icon to draw, if any. {@code icon.enabled = false} hides icons already on boxes too; the data is kept (PRD §8). */

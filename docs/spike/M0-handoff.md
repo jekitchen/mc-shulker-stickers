@@ -60,7 +60,7 @@ Start a server with `./gradlew :fabric:runServer`, `:paper:runServer` or `:paper
    - The first try found that moved displays were never sent to players: the icons stayed put while the lid opened through them. That's fixed in #4.
    - After the fix, with a vanilla client, the icon and name rise and turn with the lid and look attached to it.
    - With Fresh Animations (a resource pack that re-animates the lid, with a float while it's open), they don't match. The server can't see the pack, so this is noted as a known limitation.
-   - A frame-by-frame client recording shows one tick at the very start of opening where the icon hasn't moved yet and sits inside the lid. The owner didn't notice it in play.
+   - The owner then saw the very start of each move slightly out of step, opening and closing. A frame-by-frame client recording showed the same thing: the pose went out a tick after the lid's own update, aimed one step ahead. Each pose is now sent in the same tick as the lid's update, at the lid's current progress.
 
    Paper still to check.
 8. **Costs, permissions, commands, first-run tip, dispenser, walking out of reach:** see the lists in `docs/spike/fabric-0.1-notes.md` and `docs/spike/paper-0.1-notes.md`.
