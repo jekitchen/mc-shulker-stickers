@@ -19,6 +19,10 @@ repositories {
         name = "Towny"
         content { includeGroup("com.palmergames.bukkit.towny") }
     }
+    maven("https://repo.codemc.org/repository/bentoboxworld/") {
+        name = "BentoBox"
+        content { includeGroup("world.bentobox") }
+    }
     maven("https://jitpack.io") {
         name = "JitPack"
         content { includeGroup("com.github.angeschossen"); includeGroup("com.github.GriefPrevention") }
@@ -33,6 +37,9 @@ val claimApis = listOf(
     "com.palmergames.bukkit.towny:towny:${property("towny_version")}",
     "com.github.angeschossen:LandsAPI:${property("lands_api_version")}",
     "com.github.GriefPrevention:GriefPrevention:${property("griefprevention_version")}",
+    "world.bentobox:bentobox:${property("bentobox_version")}",
+    "com.intellectualsites.plotsquared:plotsquared-core:${property("plotsquared_version")}",
+    "com.google.inject:guice:7.0.0", // PlotSquared's API signatures name Guice types
 )
 
 val shade = configurations.create("shade")
@@ -41,6 +48,8 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:${property("paper_api_version")}")
     implementation(project(":core"))
     shade(project(":core"))
+    // BentoBox's jar carries an old copy of Gson: list ours first so the compiler sees the new one.
+    compileOnly("com.google.code.gson:gson:${property("gson_version")}")
     claimApis.forEach { compileOnly(it) { isTransitive = false } }
 
     testImplementation("io.papermc.paper:paper-api:${property("paper_api_version")}")
@@ -95,20 +104,22 @@ tasks.register<RunServer>("runCanvas") {
     runDirectory = layout.projectDirectory.dir("run-canvas")
 }
 
-// Paper with real claim plugins (owner decision 3): WorldEdit + WorldGuard and GriefPrevention,
-// the 26.3 builds from Modrinth. With -Pselftest it also checks our hooks load and call them.
+// Paper with real claim plugins (owner decision 3): WorldEdit + WorldGuard, GriefPrevention and
+// BentoBox, the 26.3 builds from Modrinth. With -Pselftest it also checks our hooks load and call
+// them. PlotSquared isn't here: its plugin jar is only on SpigotMC, which scripts can't download.
 tasks.register<RunServer>("runClaims") {
     group = "run paper"
-    description = "Runs Paper with WorldGuard and GriefPrevention installed."
+    description = "Runs Paper with WorldGuard, GriefPrevention and BentoBox installed."
     minecraftVersion(project.property("minecraft_version") as String)
     pluginJars(tasks.jar.flatMap { it.archiveFile })
     downloadPlugins {
         url("https://cdn.modrinth.com/data/1u6JkXh5/versions/YFnqiUlL/worldedit-bukkit-7.4.6.jar")
         url("https://cdn.modrinth.com/data/DKY9btbd/versions/fiHLM6oY/worldguard-bukkit-7.0.21.jar")
         url("https://cdn.modrinth.com/data/O4o4mKaq/versions/MtwPHMAS/GriefPrevention.jar")
+        url("https://cdn.modrinth.com/data/aBVLHiAW/versions/L7s3HFI3/BentoBox-3.23.7.jar")
     }
     runDirectory = layout.projectDirectory.dir("run-claims")
-    jvmArgs("-Dshulkerstickers.selftest.claims=GriefPrevention,WorldGuard")
+    jvmArgs("-Dshulkerstickers.selftest.claims=GriefPrevention,WorldGuard,BentoBox")
 }
 
 // Paper on the same world as runServer, without this plugin: the uninstall check (AC-6,

@@ -62,7 +62,7 @@ The first time you place a shulker box, a short tip explains this. `/shulkerstic
 
 Paper uses the server's permission system (LuckPerms and others work automatically). Fabric uses the Fabric Permissions API if it's installed, otherwise operator levels.
 
-Editing a box needs **build** permission where the box is, not just permission to open it, so claim and protection plugins keep working. On Fabric that's spawn protection and any claim mod using the Common Protection API. On Paper, GriefPrevention, WorldGuard, Lands and Towny are asked directly when installed, and plugins that block right-clicking the box work too. For other claim plugins, see `protection.simulate_place_event` below.
+Editing a box needs **build** permission where the box is, not just permission to open it, so claim and protection plugins keep working. On Fabric that's spawn protection and any claim mod using the Common Protection API. On Paper, GriefPrevention, WorldGuard, Lands, Towny, BentoBox (its island flags for placing and breaking blocks) and PlotSquared (its plot rules for building) are asked directly when installed, and plugins that block right-clicking the box work too. For other claim plugins, see `protection.simulate_place_event` below.
 
 ## Configuration
 

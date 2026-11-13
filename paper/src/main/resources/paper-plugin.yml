@@ -11,6 +11,8 @@ dependencies:
     WorldGuard: { load: BEFORE, required: false, join-classpath: true }
     Lands: { load: BEFORE, required: false, join-classpath: true }
     Towny: { load: BEFORE, required: false, join-classpath: true }
+    BentoBox: { load: BEFORE, required: false, join-classpath: true }
+    PlotSquared: { load: BEFORE, required: false, join-classpath: true }
 description: Recolor, label and rename placed shulker boxes. Works with vanilla clients.
 authors: [jekitchen]
 website: https://github.com/jekitchen/mc-shulker-stickers
