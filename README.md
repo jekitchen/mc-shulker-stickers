@@ -98,7 +98,7 @@ Fabric: `config/shulker_stickers.json`. Paper: `plugins/ShulkerStickers/config.j
 - **`icon.blocklist`** lists item IDs that can't be used as icons. The item tag `#shulker_stickers:icon_blocklist` works too.
 - **`name.blocked_words`** entries match whole words, ignoring case. Wrap an entry in slashes (`"/b[a4]d/"`) to use a regular expression.
 - **`icon.enabled`** set to `false` also hides icons already on boxes. The data stays, so turning it back on restores them.
-- **`display.hide_while_open`**: when a box opens, an icon and name on its **lid** rise and turn with the lid. Ones on a **side** are hidden until the box closes; set this to `false` to keep them showing.
+- **`display.hide_while_open`**: when a box opens, an icon and name on its **lid** rise and turn with the lid. Ones on a **side** are hidden until the box closes; set this to `false` to keep them showing. The icons follow vanilla's lid animation, so players with a resource pack that animates shulker boxes differently (Fresh Animations, for example) will see the lid move away from them.
 - **`protection.simulate_place_event`** (Paper only, off by default) asks claim plugins we don't support directly by firing a test block-place event. Leave it off if you run a logging plugin such as CoreProtect: it can log the editor as having placed the box, and rolling that player back would remove the box.
 
 ## Building

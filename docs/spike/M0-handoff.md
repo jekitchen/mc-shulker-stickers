@@ -56,6 +56,13 @@ Start a server with `./gradlew :fabric:runServer`, `:paper:runServer` or `:paper
 5. **Icon looks:** a dyed leather helmet, an enchanted sword (glint), a player head and a banner should each look like the item.
 6. **Names:** readable under the icon, and centered on the face for a name-only box.
 7. **Open box (v0.2 branch `feature/lid-follow`):** open a box with its icon and name on the lid: they rise and turn with the lid, stay on it the whole time, and settle back when it closes. Try a box facing up and one facing sideways. A box with its icon on a side hides it while open and shows it again after closing. (On `release/0.1-prep` all displays simply hide while the box is open.)
+   **Fabric, seen by the owner (13 Nov):**
+   - The first try found that moved displays were never sent to players: the icons stayed put while the lid opened through them. That's fixed in #4.
+   - After the fix, with a vanilla client, the icon and name rise and turn with the lid and look attached to it.
+   - With Fresh Animations (a resource pack that re-animates the lid, with a float while it's open), they don't match. The server can't see the pack, so this is noted as a known limitation.
+   - A frame-by-frame client recording shows one tick at the very start of opening where the icon hasn't moved yet and sits inside the lid. The owner didn't notice it in play.
+
+   Paper still to check.
 8. **Costs, permissions, commands, first-run tip, dispenser, walking out of reach:** see the lists in `docs/spike/fabric-0.1-notes.md` and `docs/spike/paper-0.1-notes.md`.
 9. **Optional Fabric integrations with real mods:** LuckPerms and a Common Protection API claim mod (e.g. Flan). Both APIs are exercised in GameTests with fake providers, but not yet with the real mods.
 10. **Lock key:** lock a box with `/data merge block <pos> {lock:{items:"minecraft:stick"}}` (or a named key). With the key in the off-hand and an empty main hand, the editor opens on both builds; without it, "locked". The icon picker then offers only the key.
