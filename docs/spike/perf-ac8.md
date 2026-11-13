@@ -97,4 +97,8 @@ Proximity is checked once a second per chunk, so a player flying in fast (elytra
 Re-measured 12 Nov 2026 after the display fixes (chunk-edge displays, lost-display check, the Fabric non-loading lookup), on the same machine:
 
 - **Fabric:** the per-tick hook for 1,000 boxes averages 0.039 ms (p99 0.080 ms), the same as before.
+
+**Re-measured 13 Nov 2026 (v0.2 lid motion, Fabric):**
+- **First fix:** the displays' moves weren't reaching players. Letting every lid-face display tick with its chunk sent them, but cost about +0.2 ms per tick with 1,000 lid boxes.
+- **Final version:** a lid's move is sent by the mod in the tick it happens, and nothing ticks otherwise. That's back to the old cost: the hook takes 0.034 ms, and the mean server tick is −0.03 ms against the run without boxes, which is noise.
 - **Paper, player near all 1,000 boxes:** the plugin's proximity checks take 0.039 ms/tick and the mean tick is 1.12 ms, the same as before (0.041 ms and 1.135 ms). A first version of the lost-display check cost 0.065 ms/tick; it now only looks at displays standing in a neighbouring chunk.

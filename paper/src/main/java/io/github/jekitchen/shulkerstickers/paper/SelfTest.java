@@ -790,7 +790,10 @@ final class SelfTest {
      */
     private void boxInUseTest(Location origin, Runnable then) {
         Block box = origin.clone().add(-2, -5, 0).getBlock();
-        placeDecoratedBox(box, BlockFace.UP, ICON);
+        // On a side face: side displays hide while the box is open (lid-face ones move with the
+        // lid instead, see lidFollowTest).
+        Sticker side = new Sticker(ICON.iconId(), ICON.iconVisual(), Anchor.SIDE, 0, Optional.of(Face.NORTH));
+        placeDecoratedBox(box, BlockFace.UP, side);
         ShulkerBox unlocked = (ShulkerBox) box.getState();
         unlocked.setLockItem(null); // Save checks the lock; this test is about the viewer
         unlocked.update(true, false);
@@ -820,7 +823,7 @@ final class SelfTest {
                     original.withColor(BoxColor.RED).withIcon(Optional.of("minecraft:diamond"), Optional.empty())
                             .withName(Optional.of("Gems")),
                     new io.github.jekitchen.shulkerstickers.core.Changes(true, true, true),
-                    BlockFace.UP, 0, false, new AtomicBoolean()));
+                    BlockFace.NORTH, 0, false, new AtomicBoolean()));
             ShulkerBox after = (ShulkerBox) box.getState();
             boolean hiddenAfterSave = displays.displaysAt(box).isEmpty();
             check("PRD 9: Save while someone has the box open applies icon and name, refuses only the color (box in use)"
@@ -833,7 +836,7 @@ final class SelfTest {
                             && Component.text("Gems").equals(after.customName())
                             && StickerStore.read(after.getPersistentDataContainer()).flatMap(Sticker::iconId)
                                     .equals(Optional.of("minecraft:diamond")));
-            check("PRD 5.5: displays are hidden while the box is open, also after that Save (drawn before " + drawnBefore
+            check("PRD 5.5: side displays are hidden while the box is open, also after that Save (drawn before " + drawnBefore
                             + ", hidden on open " + hiddenOnOpen + ", after Save " + hiddenAfterSave + ")",
                     drawnBefore == 2 && hiddenOnOpen && hiddenAfterSave);
             try {
@@ -851,9 +854,92 @@ final class SelfTest {
                         shown.size() == 2 && shown.stream().allMatch(Entity::isValid) && newIcon);
                 displays.forget(BlockKey.of(box));
                 box.setType(Material.AIR, false);
-                then.run();
+                lidFollowTest(origin, then);
             }, 30);
         }, 3);
+    }
+
+    /**
+     * PRD §5.5 (v0.2): displays on the lid face stay drawn while the box is open and move with the
+     * lid: fully open, each one's transformation is the shared lid motion applied to its rest pose
+     * (vanilla: 0.5 blocks up along the facing, -270 degrees about it). After the box closes they
+     * are back at rest. Opened and closed through DisplayListener with a stand-in viewer.
+     */
+    private void lidFollowTest(Location origin, Runnable then) {
+        Block box = origin.clone().add(-2, -5, 3).getBlock();
+        placeDecoratedBox(box, BlockFace.EAST, ICON); // icon and name on the lid, facing east
+        displays.forceNearby(true);
+        displays.refresh(box);
+        BlockKey key = BlockKey.of(box);
+        java.util.List<Entity> drawn = displays.displaysAt(box);
+        java.util.Map<Entity, org.bukkit.util.Transformation> rest = new java.util.HashMap<>();
+        drawn.forEach(e -> rest.put(e, ((Display) e).getTransformation()));
+        boolean onLid = displays.onLid(key);
+
+        org.bukkit.inventory.Inventory inventory = ((ShulkerBox) box.getState(false)).getInventory();
+        org.bukkit.entity.HumanEntity viewer = stub(org.bukkit.entity.HumanEntity.class, java.util.Map.of());
+        org.bukkit.inventory.InventoryView view = stub(org.bukkit.inventory.InventoryView.class,
+                java.util.Map.of("getTopInventory", inventory, "getPlayer", viewer));
+        DisplayListener listener = new DisplayListener(plugin, settings, displays);
+        // A spectator first: vanilla doesn't move the lid for spectators, so neither do we.
+        org.bukkit.entity.HumanEntity spectator = stub(org.bukkit.entity.HumanEntity.class,
+                java.util.Map.of("getGameMode", org.bukkit.GameMode.SPECTATOR));
+        org.bukkit.inventory.InventoryView spectatorView = stub(org.bukkit.inventory.InventoryView.class,
+                java.util.Map.of("getTopInventory", inventory, "getPlayer", spectator));
+        listener.onOpen(new org.bukkit.event.inventory.InventoryOpenEvent(spectatorView));
+        Bukkit.getRegionScheduler().runDelayed(plugin, origin, t0 -> {
+        check("PRD 5.5: a spectator opening the box doesn't move the lid displays (lid " + displays.lidTenths(key) + "/10)",
+                displays.lidTenths(key) == 0);
+        inventory.getViewers().add(viewer);
+        listener.onOpen(new org.bukkit.event.inventory.InventoryOpenEvent(view));
+        Bukkit.getRegionScheduler().runDelayed(plugin, origin, t1 -> {
+            java.util.List<Entity> open = displays.displaysAt(box);
+            org.joml.Vector3f facing = new org.joml.Vector3f(1, 0, 0);
+            StringBuilder why = new StringBuilder();
+            boolean posed = !open.isEmpty();
+            for (Entity e : open) {
+                org.bukkit.util.Transformation was = rest.get(e);
+                org.bukkit.util.Transformation now = ((Display) e).getTransformation();
+                if (was == null) {
+                    posed = false;
+                    why.append(" new entity ").append(e.getType());
+                    continue;
+                }
+                org.joml.Vector3f standOffset = e.getLocation().toVector()
+                        .subtract(box.getLocation().add(0.5, 0.5, 0.5).toVector()).toVector3f();
+                var want = io.github.jekitchen.shulkerstickers.core.display.LidMotion.at(1f, facing, standOffset,
+                        was.getTranslation(), was.getLeftRotation());
+                boolean ok = want.translation().distance(now.getTranslation()) < 1.0E-4f
+                        && want.leftRotation().equals(now.getLeftRotation(), 1.0E-4f);
+                posed &= ok;
+                if (!ok) {
+                    why.append(' ').append(e.getType()).append(" at ").append(now.getTranslation())
+                            .append(" want ").append(want.translation());
+                }
+            }
+            check("PRD 5.5: lid-face displays stay drawn and move with the lid when the box opens (on lid " + onLid
+                            + ", lid " + displays.lidTenths(key) + "/10, drawn " + drawn.size() + " then " + open.size()
+                            + why + ")",
+                    onLid && drawn.size() == 2 && open.size() == 2 && displays.lidTenths(key) == 10 && posed);
+            inventory.getViewers().remove(viewer);
+            listener.onClose(new org.bukkit.event.inventory.InventoryCloseEvent(view));
+            Bukkit.getRegionScheduler().runDelayed(plugin, origin, t2 -> {
+                java.util.List<Entity> after = displays.displaysAt(box);
+                boolean atRest = after.size() == 2 && after.stream().allMatch(e -> {
+                    org.bukkit.util.Transformation was = rest.get(e);
+                    org.bukkit.util.Transformation now = ((Display) e).getTransformation();
+                    return was != null && was.getTranslation().distance(now.getTranslation()) < 1.0E-4f
+                            && was.getLeftRotation().equals(now.getLeftRotation(), 1.0E-4f);
+                });
+                check("PRD 5.5: lid-face displays are back at rest once the box closes (lid " + displays.lidTenths(key)
+                                + "/10, drawn " + after.size() + ")",
+                        atRest && displays.lidTenths(key) == 0);
+                displays.forget(key);
+                box.setType(Material.AIR, false);
+                then.run();
+            }, 15);
+        }, 15);
+        }, 5);
     }
 
     /**

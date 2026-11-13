@@ -2,6 +2,8 @@ package io.github.jekitchen.shulkerstickers.fabric.display;
 
 import eu.pb4.polymer.virtualentity.api.ElementHolder;
 import eu.pb4.polymer.virtualentity.api.attachment.ChunkAttachment;
+import eu.pb4.polymer.virtualentity.api.elements.DisplayElement;
+import io.github.jekitchen.shulkerstickers.core.display.LidMotion;
 import eu.pb4.polymer.virtualentity.api.elements.ItemDisplayElement;
 import eu.pb4.polymer.virtualentity.api.elements.TextDisplayElement;
 import io.github.jekitchen.shulkerstickers.core.Anchor;
@@ -65,6 +67,48 @@ public final class StickerDisplays {
      * chunk then would wait for itself forever and hang the server thread.
      */
     private static final Map<ServerLevel, Set<ShulkerBoxBlockEntity>> PENDING = new WeakHashMap<>();
+    /** Boxes drawn on their lid face: their displays move with the lid (PRD §5.5, v0.2). */
+    private static final Map<ServerLevel, Map<BlockPos, Lid>> LIDS = new WeakHashMap<>();
+
+    /** A display's pose with the box closed. */
+    private record Rest(DisplayElement element, Vector3f translation, Quaternionf rotation) {}
+
+    /** The displays on a box's lid face, and the lid progress they were last drawn at. */
+    private static final class Lid {
+        final ElementHolder holder;
+        final Vector3f facing;
+        final Vector3f standOffset;
+        final List<Rest> rests;
+        float shown;
+
+        Lid(ElementHolder holder, Vector3f facing, Vector3f standOffset, List<Rest> rests) {
+            this.holder = holder;
+            this.facing = facing;
+            this.standOffset = standOffset;
+            this.rests = rests;
+        }
+
+        /** Moves every display to the lid's pose at {@code progress}, over one tick if {@code smooth}. */
+        void moveTo(float progress, boolean smooth) {
+            for (Rest rest : rests) {
+                LidMotion.Pose pose = LidMotion.at(progress, facing, standOffset, rest.translation(), rest.rotation());
+                rest.element().setTranslation(pose.translation());
+                rest.element().setLeftRotation(pose.leftRotation());
+                rest.element().setInterpolationDuration(smooth ? 1 : 0);
+                rest.element().startInterpolation();
+            }
+            shown = progress;
+        }
+
+        /**
+         * Sends the new pose to players now. The holder doesn't tick on its own (nothing else about
+         * it changes), and sending in this tick puts the pose in the same batch as vanilla's lid
+         * update: the client then moves lid and displays together over the next tick.
+         */
+        void send() {
+            holder.tick();
+        }
+    }
 
     private StickerDisplays() {
     }
@@ -117,6 +161,15 @@ public final class StickerDisplays {
         if (holder != null) {
             holder.destroy();
         }
+        Map<BlockPos, Lid> lids = LIDS.get(level);
+        if (lids != null) {
+            lids.remove(pos);
+        }
+    }
+
+    /** Whether the box's displays are on its lid face (and so move with the lid); for tests. */
+    public static boolean isOnLid(ServerLevel level, BlockPos pos) {
+        return LIDS.getOrDefault(level, Map.of()).containsKey(pos);
     }
 
     /** Number of boxes currently drawn in a level; for tests. */
@@ -141,23 +194,55 @@ public final class StickerDisplays {
         return box.getAnimationStatus() != ShulkerBoxBlockEntity.AnimationStatus.CLOSED;
     }
 
-    /** Per-tick hook: draws boxes whose chunk has finished loading, hides displays of open boxes and shows them again on close. Public for the perf test. */
+    /**
+     * Per-tick hook, after vanilla has moved the lids this tick: draws boxes whose chunk has
+     * finished loading, moves lid-face displays with the lid, hides side displays of open boxes
+     * and shows them again on close. Public for the perf test.
+     */
     public static void updateOpenBoxes(ServerLevel level) {
         drawPending(level);
-        if (!Settings.config().hideWhileOpen()) {
-            if (!HIDDEN.getOrDefault(level, Set.of()).isEmpty()) {
-                new ArrayList<>(HIDDEN.get(level)).forEach(pos -> refresh(level, pos));
-            }
-            return;
+        boolean hideWhileOpen = Settings.config().hideWhileOpen();
+        if (!hideWhileOpen && !HIDDEN.getOrDefault(level, Set.of()).isEmpty()) {
+            new ArrayList<>(HIDDEN.get(level)).forEach(pos -> refresh(level, pos));
         }
+        // One pass, one lookup per drawn box: lid-face displays follow the lid, side ones of an
+        // open box are hidden (collected first, since hiding changes the map being walked).
         Map<BlockPos, ElementHolder> holders = HOLDERS.get(level);
+        Map<BlockPos, Lid> lids = LIDS.getOrDefault(level, Map.of());
+        List<BlockPos> toHide = null;
         if (holders != null && !holders.isEmpty()) {
-            for (BlockPos pos : new ArrayList<>(holders.keySet())) {
-                if (loadedBox(level, pos) instanceof ShulkerBoxBlockEntity box && isOpen(box)) {
-                    remove(level, pos);
-                    HIDDEN.computeIfAbsent(level, l -> new HashSet<>()).add(pos);
+            for (BlockPos pos : holders.keySet()) {
+                Lid lid = lids.get(pos);
+                if (lid == null && !hideWhileOpen) {
+                    continue;
+                }
+                if (!(loadedBox(level, pos) instanceof ShulkerBoxBlockEntity box)) {
+                    continue;
+                }
+                if (lid != null) {
+                    // Vanilla has moved the lid this tick and its update goes out at the end of
+                    // the tick; the pose sent now goes with it, and both move over the next tick.
+                    float progress = box.getProgress(1.0f);
+                    if (progress != lid.shown) {
+                        lid.moveTo(progress, true);
+                        lid.send();
+                    }
+                } else if (isOpen(box)) {
+                    if (toHide == null) {
+                        toHide = new ArrayList<>();
+                    }
+                    toHide.add(pos);
                 }
             }
+        }
+        if (toHide != null) {
+            for (BlockPos pos : toHide) {
+                remove(level, pos);
+                HIDDEN.computeIfAbsent(level, l -> new HashSet<>()).add(pos);
+            }
+        }
+        if (!hideWhileOpen) {
+            return;
         }
         Set<BlockPos> hidden = HIDDEN.get(level);
         if (hidden != null && !hidden.isEmpty()) {
@@ -207,7 +292,9 @@ public final class StickerDisplays {
      */
     private static net.minecraft.world.level.block.entity.@Nullable BlockEntity loadedBox(ServerLevel level, BlockPos pos) {
         LevelChunk chunk = loadedChunk(level, pos);
-        return chunk == null ? null : chunk.getBlockEntity(pos);
+        // The chunk's own map: unlike getBlockEntity, it never creates a pending block entity (which
+        // would fire the load event while the per-tick pass walks the drawn boxes).
+        return chunk == null ? null : chunk.getBlockEntities().get(pos);
     }
 
     /** The chunk at {@code pos} if it is fully loaded; never loads it or waits for it. */
@@ -226,24 +313,25 @@ public final class StickerDisplays {
             return;
         }
         StickerConfig config = Settings.config();
-        if (config.hideWhileOpen() && isOpen(box)) {
-            HIDDEN.computeIfAbsent(level, l -> new HashSet<>()).add(pos);
-            return;
-        }
-        HIDDEN.getOrDefault(level, new HashSet<>()).remove(pos);
-
         Optional<Sticker> sticker = StickerData.read(box);
         Optional<String> name = Optional.ofNullable(box.getCustomName()).map(io.github.jekitchen.shulkerstickers.fabric.SafeNames::plain)
                 .filter(n -> config.nameDisplayEnabled() && !StickerData.isNameHidden(box));
         Optional<ItemStack> icon = iconToDraw(sticker, config, level.registryAccess());
-        if (icon.isEmpty() && name.isEmpty()) {
-            return;
-        }
 
         Direction facing = box.getBlockState().getValue(ShulkerBoxBlock.FACING);
         // A name with no stored anchor (e.g. renamed at an anvil) goes on the lid.
         Anchor anchor = sticker.map(Sticker::anchor).orElse(Anchor.LID);
         Direction face = Boxes.direction(Faces.iconFace(anchor, Boxes.face(facing), sticker.flatMap(Sticker::face)));
+        // Displays on the lid face move with the lid; the others are hidden while the box is open.
+        boolean onLid = face == facing;
+        if (!onLid && config.hideWhileOpen() && isOpen(box)) {
+            HIDDEN.computeIfAbsent(level, l -> new HashSet<>()).add(pos);
+            return;
+        }
+        HIDDEN.getOrDefault(level, new HashSet<>()).remove(pos);
+        if (icon.isEmpty() && name.isEmpty()) {
+            return;
+        }
         int rot = face.getAxis() == Direction.Axis.Y ? sticker.map(Sticker::rot).orElse(0) : 0;
         Quaternionf rotation = faceRotation(face, rot);
 
@@ -274,8 +362,27 @@ public final class StickerDisplays {
             holder.addElement(label);
         });
 
+        // Lid-face displays: posed for the lid before they're attached, so a box drawn while
+        // (partly) open is sent to players already in place.
+        if (onLid) {
+            List<Rest> rests = new ArrayList<>();
+            for (var element : holder.getElements()) {
+                if (element instanceof DisplayElement display) {
+                    rests.add(new Rest(display, new Vector3f(display.getTranslation()), new Quaternionf(display.getLeftRotation())));
+                }
+            }
+            Vector3f facingVec = new Vector3f(facing.getStepX(), facing.getStepY(), facing.getStepZ());
+            Lid lid = new Lid(holder, facingVec, new Vector3f(facingVec).mul((float) DisplayLayout.FACE_OFFSET), rests);
+            float progress = box.getProgress(1.0f);
+            if (progress > 0) {
+                lid.moveTo(progress, false); // drawn while the box is (partly) open
+            }
+            LIDS.computeIfAbsent(level, l -> new HashMap<>()).put(pos, lid);
+        }
+
         // The display sits just outside the face (for light) but belongs to the box's own chunk,
-        // so a box on a chunk edge never loads or depends on the neighbouring chunk.
+        // so a box on a chunk edge never loads or depends on the neighbouring chunk. It doesn't
+        // tick: a lid's moves are sent as they're made (Lid#send), and nothing else changes.
         Vec3 at = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(DisplayLayout.FACE_OFFSET));
         new ChunkAttachment(holder, chunk, at, false);
         HOLDERS.computeIfAbsent(level, l -> new HashMap<>()).put(pos, holder);

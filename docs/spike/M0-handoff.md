@@ -55,7 +55,14 @@ Start a server with `./gradlew :fabric:runServer`, `:paper:runServer` or `:paper
 4. **Icons:** on all six faces, the icon faces outward and isn't mirrored. On top and bottom, the image's top points the way you were facing. Both builds assume the display model's front faces +Z; if every icon looks backwards, that one assumption is wrong.
 5. **Icon looks:** a dyed leather helmet, an enchanted sword (glint), a player head and a banner should each look like the item.
 6. **Names:** readable under the icon, and centered on the face for a name-only box.
-7. **Hide while open:** the displays disappear while the box is open and come back after it closes.
+7. **Open box (v0.2 branch `feature/lid-follow`):** open a box with its icon and name on the lid: they rise and turn with the lid, stay on it the whole time, and settle back when it closes. Try a box facing up and one facing sideways. A box with its icon on a side hides it while open and shows it again after closing. (On `release/0.1-prep` all displays simply hide while the box is open.)
+   **Fabric, seen by the owner (13 Nov):**
+   - The first try found that moved displays were never sent to players: the icons stayed put while the lid opened through them. That's fixed in #4.
+   - After the fix, with a vanilla client, the icon and name rise and turn with the lid and look attached to it.
+   - With Fresh Animations (a resource pack that re-animates the lid, with a float while it's open), they don't match. The server can't see the pack, so this is noted as a known limitation.
+   - The owner then saw the very start of each move slightly out of step, opening and closing. A frame-by-frame client recording showed the same thing: the pose went out a tick after the lid's own update, aimed one step ahead. Each pose is now sent in the same tick as the lid's update, at the lid's current progress.
+
+   Paper still to check.
 8. **Costs, permissions, commands, first-run tip, dispenser, walking out of reach:** see the lists in `docs/spike/fabric-0.1-notes.md` and `docs/spike/paper-0.1-notes.md`.
 9. **Optional Fabric integrations with real mods:** LuckPerms and a Common Protection API claim mod (e.g. Flan). Both APIs are exercised in GameTests with fake providers, but not yet with the real mods.
 10. **Lock key:** lock a box with `/data merge block <pos> {lock:{items:"minecraft:stick"}}` (or a named key). With the key in the off-hand and an empty main hand, the editor opens on both builds; without it, "locked". The icon picker then offers only the key.
@@ -64,6 +71,33 @@ Start a server with `./gradlew :fabric:runServer`, `:paper:runServer` or `:paper
 13. **Shared look:** compare the editor and a decorated box side by side on Fabric and Paper; tune `DisplayLayout` and `EditorLook` in `core` if needed.
 14. **Restart (both, 12 Nov fixes):** decorate a few boxes near spawn, restart the server, and check it starts and the icons and names show again. Also walk far away and back so their chunks unload and reload. Before the fixes, Fabric froze at "Preparing spawn area", and Paper didn't draw boxes in chunks that were loaded before the plugin (spawn chunks).
 15. **Chunk edge (Paper, 12 Nov change):** put a box in the last block column of a chunk (F3 shows chunk borders) with its icon on the face toward the next chunk. The icon shows in front of the face, at the same brightness as a box in the middle of a chunk.
+
+### Results: Fabric, owner with a vanilla 26.3 client (13 Nov 2026)
+
+Run on `feature/claims-bentobox-plotsquared` (0.1 plus the 0.2 lid and claims work), on `:fabric:runServer` with the showcase. All passed after two fixes made during the session (see check 7):
+
+- **1, 2, 3 (editor):**
+  - the gesture opens the editor, with no ghost block;
+  - shift-click, number keys, F, double-click, drag, Q, Ctrl+Q and clicking outside all leave nothing in the inventory or on the ground;
+  - rename costs 0 XP, the paper never reaches the inventory, and Esc returns to the editor;
+  - Save and Cancel work.
+- **4, 5, 6 (icons and names):** every facing and side face is outward and not mirrored, and lid rotations point the right way. The dyed helmet, glint, head and banner look like the items. Names are readable, a name with no icon is centered, the long name is cut and the hidden name is hidden.
+- **7 (lid motion):** passed after the two fixes (see check 7). With a vanilla client, the icon and name move with the lid.
+- **10 (lock key):** locked without the key; with the key in the off-hand the editor opens and offers only the key as the icon.
+- **14 (restart and chunk reload):** after a restart, and after going 200 blocks away for two minutes, every icon and name came back, with no duplicates and none missing.
+- **First-run tip and commands:**
+  - the tip appears on the first placement only, and `/shulkerstickers help` shows the same text;
+  - `inspect` and `toggle` work.
+
+### Results: Paper, owner with a vanilla 26.3 client (13 Nov 2026, in progress)
+
+- **4, 5, 6 (icons and names):** every row shows every expected icon and name.
+- **7 (lid motion), first try:** opening looked right, but on closing the icon and name dropped into the lid until it stopped. A packet log on the player's connection showed why:
+  - the plugin stepped once at the open or close event, which comes between ticks;
+  - its per-tick task then stepped again at the start of the next tick, before entity changes are sent;
+  - so every update was one step ahead of vanilla's lid. Opening, that's just above the lid; closing, it's inside.
+
+  Fixed: the first step is now taken by the per-tick task. **Still to recheck in game**, then the editor, the chunk edge (15), a restart (14) and the Fabric comparison (13).
 
 ## Files
 

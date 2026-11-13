@@ -178,8 +178,11 @@ public class EdgeCaseGameTests {
                     helper.assertTrue(viewer.containerMenu instanceof ShulkerBoxMenu, "the viewer still has the box open");
                 })
                 .thenWaitUntil(() -> {
-                    helper.assertTrue(StickerDisplays.isHidden(level, pos), "displays hidden while the box is open");
-                    helper.assertFalse(StickerDisplays.isShown(level, pos), "nothing drawn while the box is open");
+                    // The icon went on the lid face (clicked on top of an upward box): since v0.2 it
+                    // stays drawn and moves with the lid instead of hiding (PRD §5.5).
+                    helper.assertTrue(StickerDisplays.isOnLid(level, pos), "the new icon is on the lid");
+                    helper.assertTrue(StickerDisplays.isShown(level, pos) && !StickerDisplays.isHidden(level, pos),
+                            "lid displays stay drawn while the box is open");
                 })
                 .thenExecute(viewer::closeContainer)
                 .thenWaitUntil(() -> {

@@ -3,6 +3,7 @@ package io.github.jekitchen.shulkerstickers.paper;
 import io.github.jekitchen.shulkerstickers.core.Anchor;
 import io.github.jekitchen.shulkerstickers.core.config.StickerConfig;
 import io.github.jekitchen.shulkerstickers.core.display.DisplayLayout;
+import io.github.jekitchen.shulkerstickers.core.display.LidMotion;
 import io.github.jekitchen.shulkerstickers.core.data.Sticker;
 import io.github.jekitchen.shulkerstickers.core.rules.NameRules;
 import io.papermc.paper.threadedregions.scheduler.ScheduledTask;
@@ -65,9 +66,37 @@ class DisplayManager {
     /** What a box has to show, if a player is close enough. */
     record Parts(boolean icon, boolean name) {}
 
-    /** What is drawn now. {@code hiddenOpen}: hidden because the box is open (shown again on close). */
-    /** {@code outside}: the displays stand in a neighbouring chunk (see {@link #spawnSpot}) and can be lost with it. */
-    private record Drawn(List<Entity> entities, boolean icon, boolean name, boolean hiddenOpen, boolean outside) {}
+    /**
+     * What is drawn now. {@code hiddenOpen}: hidden because the box is open (shown again on close).
+     * {@code outside}: the displays stand in a neighbouring chunk (see {@link #spawnSpot}) and can
+     * be lost with it. {@code lid}: set when the displays are on the lid face and move with it.
+     */
+    private record Drawn(List<Entity> entities, boolean icon, boolean name, boolean hiddenOpen, boolean outside,
+            LidDisplays lid) {
+        Drawn(List<Entity> entities, boolean icon, boolean name, boolean hiddenOpen, boolean outside) {
+            this(entities, icon, name, hiddenOpen, outside, null);
+        }
+    }
+
+    /** A lid-face display and its transformation with the box closed. */
+    private record Rest(Display display, Transformation transformation) {}
+
+    /** Displays on a box's lid face: they move with the lid (PRD §5.5, v0.2). */
+    private record LidDisplays(Vector3f facing, Vector3f standOffset, List<Rest> rests) {}
+
+    /**
+     * How far a box's lid is open, in tenths, while it moves or stays open. Paper has no API for
+     * the lid's progress, but vanilla moves it a fixed 0.1 per tick from the first viewer opening
+     * the box and back from the last one closing it, so this follows the same steps.
+     */
+    private static final class LidState {
+        int tenths;
+        boolean opening;
+        ScheduledTask task;
+    }
+
+    /** Boxes whose lid is moving or open; touched on the box's region thread only. */
+    private final Map<BlockKey, LidState> lids = new ConcurrentHashMap<>();
 
     private record ChunkKey(UUID world, int x, int z) {
         static ChunkKey of(BlockKey key) {
@@ -191,7 +220,13 @@ class DisplayManager {
                 .filter(n -> !n.isBlank());
         track(key, new Parts(icon.isPresent(), name.isPresent()));
         ensureCheck(key);
-        if (config.hideWhileOpen() && !box.getInventory().getViewers().isEmpty()) {
+        BlockFace facing = ((Directional) block.getBlockData()).getFacing();
+        // A name without a stored anchor (e.g. from a real anvil) goes on the lid.
+        Anchor anchor = sticker.map(Sticker::anchor).orElse(Anchor.LID);
+        BlockFace face = Faces.iconFace(anchor, facing, sticker.flatMap(Sticker::face));
+        // Displays on the lid face move with the lid; the others are hidden while the box is open.
+        boolean onLid = face == facing;
+        if (!onLid && config.hideWhileOpen() && !box.getInventory().getViewers().isEmpty()) {
             displays.put(key, new Drawn(List.of(), false, false, true, false));
             return; // shown again when the last viewer closes the box
         }
@@ -201,10 +236,6 @@ class DisplayManager {
         if (!drawIcon && !drawName) {
             return;
         }
-        BlockFace facing = ((Directional) block.getBlockData()).getFacing();
-        // A name without a stored anchor (e.g. from a real anvil) goes on the lid.
-        Anchor anchor = sticker.map(Sticker::anchor).orElse(Anchor.LID);
-        BlockFace face = Faces.iconFace(anchor, facing, sticker.flatMap(Sticker::face));
         Quaternionf rotation = IconOrientation.rotation(Faces.toCore(face), sticker.map(Sticker::rot).orElse(0));
         Location wanted = block.getLocation().add(0.5, 0.5, 0.5).add(face.getDirection().multiply(DisplayLayout.FACE_OFFSET));
         Location at = spawnSpot(wanted, block);
@@ -234,7 +265,137 @@ class DisplayManager {
             }));
         }
         boolean outside = at.getBlockX() >> 4 != block.getX() >> 4 || at.getBlockZ() >> 4 != block.getZ() >> 4;
-        displays.put(key, new Drawn(spawned, drawIcon, drawName, false, outside));
+        LidDisplays lid = null;
+        if (onLid) {
+            List<Rest> rests = new ArrayList<>(spawned.size());
+            for (Entity entity : spawned) {
+                Display display = (Display) entity;
+                rests.add(new Rest(display, display.getTransformation()));
+            }
+            Vector3f standOffset = at.toVector().subtract(block.getLocation().add(0.5, 0.5, 0.5).toVector()).toVector3f();
+            lid = new LidDisplays(face.getDirection().toVector3f(), standOffset, rests);
+        }
+        Drawn drawn = new Drawn(spawned, drawIcon, drawName, false, outside, lid);
+        displays.put(key, drawn);
+        LidState state = lids.get(key);
+        boolean openByAnyone = box.getInventory().getViewers().stream()
+                .anyMatch(v -> v.getGameMode() != org.bukkit.GameMode.SPECTATOR);
+        if (state != null && state.task == null && !openByAnyone) {
+            lids.remove(key); // left open by a close we never saw; the lid is shut
+            state = null;
+        }
+        if (lid != null && state != null && state.tenths > 0) {
+            poseLid(lid, state.tenths, false); // drawn while the box is (partly) open
+        }
+    }
+
+    /** Puts the lid-face displays where the lid is at {@code tenths}/10 open; over one tick if {@code smooth}. */
+    private static void poseLid(LidDisplays lid, int tenths, boolean smooth) {
+        float progress = tenths / 10f;
+        for (Rest rest : lid.rests()) {
+            Display display = rest.display();
+            if (!Bukkit.isOwnedByCurrentRegion(display) || !display.isValid()) {
+                continue;
+            }
+            Transformation at = rest.transformation();
+            LidMotion.Pose pose = LidMotion.at(progress, lid.facing(), lid.standOffset(),
+                    at.getTranslation(), at.getLeftRotation());
+            display.setInterpolationDelay(0);
+            display.setInterpolationDuration(smooth ? 1 : 0);
+            display.setTransformation(new Transformation(pose.translation(), pose.leftRotation(),
+                    at.getScale(), at.getRightRotation()));
+        }
+    }
+
+    /**
+     * Region thread. The box was opened. Its lid starts to rise: lid-face displays follow it, and
+     * side displays are hidden until it closes (if {@code display.hide_while_open}).
+     */
+    void opened(BlockKey key) {
+        moveLid(key, true);
+        Drawn drawn = displays.get(key);
+        if (drawn != null && drawn.lid() == null && settings.config().hideWhileOpen()) {
+            hideOpen(key);
+        }
+    }
+
+    /**
+     * Region thread. The last (non-spectator) viewer closed the box: the lid comes down, and side
+     * displays hidden while it was open are drawn again once it's shut.
+     */
+    void closed(BlockKey key, long lidCloseTicks) {
+        Location location = key.location();
+        if (location == null || !(location.getBlock().getState(false) instanceof ShulkerBox)) {
+            stopLid(key); // removed while open without an event we see (/setblock, WorldEdit)
+            return;
+        }
+        moveLid(key, false);
+        Drawn drawn = displays.get(key);
+        if (drawn == null || drawn.lid() == null) {
+            refreshLater(key, lidCloseTicks);
+        }
+    }
+
+    /**
+     * Starts the lid moving towards open or shut, one tenth per tick, the first step at the start
+     * of the next tick (the one in which vanilla starts the lid). Only for boxes we draw.
+     */
+    private void moveLid(BlockKey key, boolean opening) {
+        Location location = key.location();
+        if (location == null || (!tracked.containsKey(key) && !lids.containsKey(key))) {
+            return;
+        }
+        LidState state = lids.computeIfAbsent(key, k -> new LidState());
+        state.opening = opening;
+        if (state.task != null) {
+            return; // already moving: a reversal turns at its next step
+        }
+        // Players open and close boxes between ticks; vanilla starts the lid in the next tick,
+        // whose scheduler pass (where this first runs) comes before entity changes are sent. So
+        // each step is sent with the lid's own step for that tick. Stepping at the event as well
+        // put the displays a step ahead: closing, inside the lid.
+        state.task = plugin.getServer().getRegionScheduler().runAtFixedRate(plugin, location, task -> {
+            LidState current = lids.get(key);
+            if (current == null || current.task != task || stepLid(key, current)) {
+                if (current != null && current.task == task) {
+                    current.task = null;
+                }
+                cancelQuietly(task);
+            }
+        }, 1, 1);
+    }
+
+    /** Moves the lid one tenth and poses its displays; true when it has reached open or shut. */
+    private boolean stepLid(BlockKey key, LidState state) {
+        state.tenths = Math.clamp(state.tenths + (state.opening ? 1 : -1), 0, 10);
+        Drawn drawn = displays.get(key);
+        if (drawn != null && drawn.lid() != null) {
+            poseLid(drawn.lid(), state.tenths, true);
+        }
+        boolean done = state.tenths == (state.opening ? 10 : 0);
+        if (done && state.tenths == 0) {
+            lids.remove(key);
+        }
+        return done;
+    }
+
+    /** Lid progress in tenths (0 shut, 10 open); for tests. */
+    int lidTenths(BlockKey key) {
+        LidState state = lids.get(key);
+        return state == null ? 0 : state.tenths;
+    }
+
+    /** Whether the box's displays are on its lid face and move with it; for tests. */
+    boolean onLid(BlockKey key) {
+        Drawn drawn = displays.get(key);
+        return drawn != null && drawn.lid() != null;
+    }
+
+    private void stopLid(BlockKey key) {
+        LidState state = lids.remove(key);
+        if (state != null && state.task != null) {
+            cancelQuietly(state.task);
+        }
     }
 
     private List<Vector> playersAround(Block block, StickerConfig config) {
@@ -362,6 +523,7 @@ class DisplayManager {
     void forget(BlockKey key) {
         removeEntities(key);
         untrack(key);
+        stopLid(key);
     }
 
     private void track(BlockKey key, Parts parts) {
@@ -407,6 +569,12 @@ class DisplayManager {
     void removeAll() {
         checks.values().forEach(DisplayManager::cancelQuietly);
         checks.clear();
+        lids.values().forEach(state -> {
+            if (state.task != null) {
+                cancelQuietly(state.task);
+            }
+        });
+        lids.clear();
         for (Drawn drawn : displays.values()) {
             drawn.entities().forEach(DisplayManager::removeIfOwned);
         }
