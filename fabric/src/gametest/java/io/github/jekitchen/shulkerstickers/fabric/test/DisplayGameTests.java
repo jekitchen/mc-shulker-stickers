@@ -269,6 +269,9 @@ public class DisplayGameTests {
             org.joml.Quaternionf expectedRotation = new org.joml.Quaternionf().rotationY((float) Math.toRadians(-270)).mul(restRotation);
             helper.assertTrue(expectedRotation.equals(new org.joml.Quaternionf(icon.getLeftRotation()), 1e-4f),
                     "open: the icon turned -270 degrees about the facing");
+            // The lid stopped moving a few ticks ago: the new pose must have gone out to players by
+            // now. (A pose only set on the server, never sent, left real clients' icons in place.)
+            helper.assertFalse(icon.isDirty(), "open: the icon's new pose was sent to players");
             player.closeContainer();
             helper.runAfterDelay(20, () -> {
                 helper.assertTrue(box.getProgress(1.0f) == 0.0f, "the box is closed again");
@@ -276,6 +279,7 @@ public class DisplayGameTests {
                 helper.assertTrue(restTranslation.distance(new org.joml.Vector3f(closed.getTranslation())) < 1e-4f
                         && restRotation.equals(new org.joml.Quaternionf(closed.getLeftRotation()), 1e-4f),
                         "closed: the icon is back at rest (" + closed.getTranslation() + ")");
+                helper.assertFalse(closed.isDirty(), "closed: the icon's rest pose was sent to players");
                 helper.succeed();
             });
         });

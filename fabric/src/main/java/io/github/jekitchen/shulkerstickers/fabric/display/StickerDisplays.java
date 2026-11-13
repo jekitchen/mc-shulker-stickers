@@ -356,8 +356,11 @@ public final class StickerDisplays {
 
         // The display sits just outside the face (for light) but belongs to the box's own chunk,
         // so a box on a chunk edge never loads or depends on the neighbouring chunk.
+        // Lid displays tick with the chunk: that tick is what sends a moved pose to players (at the
+        // end of the chunk's tick, so a pose set at the end of tick N goes out in tick N+1).
+        // Displays that never move don't tick, so a wall of side-icon boxes costs nothing per tick.
         Vec3 at = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(face.getUnitVec3i()).scale(DisplayLayout.FACE_OFFSET));
-        new ChunkAttachment(holder, chunk, at, false);
+        new ChunkAttachment(holder, chunk, at, onLid);
         HOLDERS.computeIfAbsent(level, l -> new HashMap<>()).put(pos, holder);
 
         if (onLid) {
